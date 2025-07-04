@@ -1,71 +1,4 @@
-<CreditCard className="inline w-5 h-5 mr-2" />
-              Transactions ({filteredTransactions.length})
-            </button>
-          </nav>
-        </div>
-      </div>
-
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Sync Status Banner */}
-        {syncStatus !== 'idle' && (
-          <div className={`mb-6 p-4 rounded-xl border ${
-            syncStatus === 'success' ? 'bg-green-50 border-green-200 text-green-800' :
-            syncStatus === 'error' ? 'bg-red-50 border-red-200 text-red-800' :
-            'bg-blue-50 border-blue-200 text-blue-800'
-          }`}>
-            <div className="flex items-center space-x-3">
-              {syncStatus === 'syncing' && <RefreshCw className="w-5 h-5 animate-spin" />}
-              {syncStatus === 'success' && <CheckCircle className="w-5 h-5" />}
-              {syncStatus === 'error' && <AlertTriangle className="w-5 h-5" />}
-              <span className="font-medium">
-                {syncStatus === 'syncing' && 'Syncing with Google Sheets...'}
-                {syncStatus === 'success' && 'Successfully synced with Google Sheets!'}
-                {syncStatus === 'error' && 'Failed to sync with Google Sheets. Please try again.'}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Dashboard */}
-        {currentView === 'dashboard' && (
-          <div className="space-y-8">
-            {/* Key Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="group relative bg-white/80 backdrop-blur-xl p-6 rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-500 border border-white/50">
-                <div className="absolute inset-0 bg-gradient-to-r from-green-400/10 to-emerald-400/10 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                <div className="relative">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl shadow-lg">
-                      <DollarSign className="h-6 w-6 text-white" />
-                    </div>
-                    <div className="text-xs font-medium text-green-600 bg-green-100 px-2 py-1 rounded-full">
-                      {sheetsConfig.isConnected ? 'Synced' : 'Local'}
-                    </div>
-                  </div>
-                  <p className="text-sm font-semibold text-gray-600 mb-1">Total Balance</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {balanceVisible ? `₹${totalBalance.toLocaleString('en-IN')}` : '••••••'}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="group relative bg-white/80 backdrop-blur-xl p-6 rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-500 border border-white/50">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-400/10 to-cyan-400/10 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                <div className="relative">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-3 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-2xl shadow-lg">
-                      <TrendingUp className="h-6 w-6 text-white" />
-                    </div>
-                    <div className="text-xs font-medium text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                      This Month
-                    </div>
-                  </div>
-                  <p className="text-sm font-semibold text-gray-600 mb-1">Income</p>
-                  <p className="text-2xl font-bold text-gray-900">₹{currentMonthIncome.toLocaleString('en-IN')}</p>
-                </div>
-              </div>
-              
-              <div className="group relative bg-white/80 backdrop-blur-xl p-6 rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-500 border border-white/50">
+<div className="group relative bg-white/80 backdrop-blur-xl p-6 rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-500 border border-white/50">
                 <div className="absolute inset-0 bg-gradient-to-r from-red-400/10 to-pink-400/10 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                 <div className="relative">
                   <div className="flex items-center justify-between mb-4">
@@ -530,9 +463,7 @@
                   }}
                   className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-all duration-200"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <X className="w-6 h-6" />
                 </button>
               </div>
               
@@ -711,9 +642,7 @@
                   onClick={() => setShowSyncModal(false)}
                   className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-all duration-200"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <X className="w-5 h-5" />
                 </button>
               </div>
               
@@ -816,7 +745,7 @@
 };
 
 export default ExpenseTracker;import React, { useState, useEffect } from 'react';
-import { PlusCircle, BarChart3, CreditCard, TrendingUp, Search, DollarSign, ArrowUpDown, Wallet, Eye, EyeOff, Sparkles, Target, PieChart, Activity, AlertTriangle, CheckCircle, Star, Award, RefreshCw, Cloud, CloudOff, Trash2, Edit, Filter } from 'lucide-react';
+import { PlusCircle, BarChart3, CreditCard, TrendingUp, Search, DollarSign, ArrowUpDown, Wallet, Eye, EyeOff, Sparkles, Target, PieChart, Activity, AlertTriangle, CheckCircle, Star, Award, RefreshCw, Cloud, CloudOff, Trash2, Edit, Filter, X } from 'lucide-react';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const ExpenseTracker = () => {
@@ -887,7 +816,7 @@ const ExpenseTracker = () => {
 
   // All transactions (from Google Sheets + new ones)
   const [transactions, setTransactions] = useState([]);
-  const [originalTransactions, setOriginalTransactions] = useState([]); // Keep track of original data
+  const [originalTransactions, setOriginalTransactions] = useState([]);
 
   const [balances, setBalances] = useState({
     'Kotak': 25890.7,
@@ -939,7 +868,7 @@ const ExpenseTracker = () => {
     { value: '9', label: 'October' }, { value: '10', label: 'November' }, { value: '11', label: 'December' }
   ];
 
-  // Filter categories based on search
+  // Filter categories and accounts based on search
   const filteredCategories = masterData.categories.filter(cat =>
     cat.combined.toLowerCase().includes(categorySearch.toLowerCase())
   );
@@ -966,7 +895,6 @@ const ExpenseTracker = () => {
 
   // Convert Google Sheets row to transaction object
   const convertSheetRowToTransaction = (row, index) => {
-    // Assuming your sheet structure: Date, Amount, Category, Description, Tag, Account, Main Category, Subcategory, Type, Balance, etc.
     return {
       id: `sheet_${index}`,
       date: row[0] ? new Date(row[0]).toISOString().split('T')[0] : '',
@@ -986,7 +914,6 @@ const ExpenseTracker = () => {
     setSyncStatus('syncing');
     setIsLoading(true);
     try {
-      // Simulate API call - replace with actual Google Sheets API
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       setSheetsConfig({
@@ -996,9 +923,7 @@ const ExpenseTracker = () => {
         lastSync: new Date().toISOString()
       });
       
-      // Load all existing data from sheets
       await loadAllDataFromSheets(spreadsheetId, apiKey);
-      
       setSyncStatus('success');
       setTimeout(() => setSyncStatus('idle'), 2000);
       
@@ -1012,48 +937,36 @@ const ExpenseTracker = () => {
 
   const loadAllDataFromSheets = async (spreadsheetId, apiKey) => {
     try {
-      // Simulate loading ALL your Google Sheets data
-      // In real implementation, this would be:
-      // const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Transactions!A2:M1000?key=${apiKey}`);
-      
       // Simulated data from your actual Google Sheets
       const simulatedSheetData = [
-        ['2025-05-31', 40000, 'Income > Income', 'Monthly Load', '', 'Kotak', 'Income', 'Income', 'Income', 24686, 5416, 'June 2025', '2025'],
-        ['2025-06-01', 3700, 'Household > House Help', 'Maid', '', 'Kotak', 'Household', 'House Help', 'Expense', 20986, 5416, 'June 2025', '2025'],
-        ['2025-06-02', 2370, 'Household > Grocery', 'Momaji Grocery', '', 'Kotak', 'Household', 'Grocery', 'Expense', 18616, 5416, 'June 2025', '2025'],
-        ['2025-06-02', 325, 'Subscriptions > Subscriptions', 'Global Machining Website', '', 'Kotak', 'Subscriptions', 'Subscriptions', 'Expense', 18291, 5416, 'June 2025', '2025'],
-        ['2025-06-03', 440, 'Entertainment > Entertainment', 'Pickleball', '', 'Kotak', 'Entertainment', 'Entertainment', 'Expense', 17851, 5416, 'June 2025', '2025'],
-        ['2025-06-03', 120, 'Food > Food', 'Kulfi', '', 'Kotak', 'Food', 'Food', 'Expense', 17731, 5416, 'June 2025', '2025'],
-        ['2025-06-04', 527, 'Fuel > Honda City', 'City CNG', '', 'Kotak', 'Fuel', 'Honda City', 'Expense', 17005, 5416, 'June 2025', '2025'],
-        ['2025-06-05', 420, 'Food > Food', 'Bhaji Pav', '', 'Kotak', 'Food', 'Food', 'Expense', 16423, 5416, 'June 2025', '2025'],
-        ['2025-06-05', 90, 'Fuel > Eon', 'Chhas', '', 'Kotak', 'Fuel', 'Eon', 'Expense', 16173, 5416, 'June 2025', '2025'],
-        ['2025-06-06', 523, 'Fuel > Honda City', 'City CNG', '', 'Kotak', 'Fuel', 'Honda City', 'Expense', 13028, 5416, 'June 2025', '2025'],
-        ['2025-06-07', 110, 'Vyomi > Vyomi', 'Vyomi', '', 'Kotak', 'Vyomi', 'Vyomi', 'Expense', 12659, 5416, 'June 2025', '2025'],
-        ['2025-06-10', 570, 'Household > Grocery', 'Mango', '', 'Kotak', 'Household', 'Grocery', 'Expense', 11755, 5416, 'June 2025', '2025'],
-        ['2025-06-12', 596, 'Fuel > Honda City', 'City CNG', '', 'Kotak', 'Fuel', 'Honda City', 'Expense', 10959, 5416, 'June 2025', '2025'],
-        ['2025-06-12', 3251, 'Transportation > Insurance', 'Eon Insurance', 'Yearly Major Expenses', 'Kotak', 'Transportation', 'Insurance', 'Expense', 7708, 5416, 'June 2025', '2025'],
-        ['2025-06-14', 1000, 'Fuel > Honda City', 'City Petrol', '', 'Kotak', 'Fuel', 'Honda City', 'Expense', 6626, 5416, 'June 2025', '2025'],
-        ['2025-06-15', 1079, 'Household > Grocery', 'Swiggy Grocery', '', 'Kotak', 'Household', 'Grocery', 'Expense', 4212, 5416, 'June 2025', '2025'],
-        ['2025-06-21', 59, 'Subscriptions > Subscriptions', 'Google Drive BB', '', 'Kotak', 'Subscriptions', 'Subscriptions', 'Expense', 3007, 5416, 'June 2025', '2025'],
-        ['2025-06-23', 510, 'Entertainment > Entertainment', 'Blinkit Board Game', '', 'Kotak', 'Entertainment', 'Entertainment', 'Expense', 1782, 5416, 'June 2025', '2025'],
-        ['2025-06-27', 2844, 'Household > Grocery', 'Dmart', '', 'Kotak', 'Household', 'Grocery', 'Expense', -1880, 5416, 'June 2025', '2025'],
-        ['2025-06-28', 550, 'Social Life > Social Life', 'Swiggy Food', '', 'Kotak', 'Social Life', 'Social Life', 'Expense', -2430, 5416, 'June 2025', '2025'],
-        ['2025-06-30', 40000, 'Income > Income', 'Monthly Load', '', 'Kotak', 'Income', 'Income', 'Income', 29590, 5416, 'July 2025', '2025'],
-        ['2025-06-30', 3700, 'Household > House Help', 'Maid', '', 'Kotak', 'Household', 'House Help', 'Expense', 25890, 5416, 'July 2025', '2025']
+        ['2025-05-31', 40000, 'Income > Income', 'Monthly Load', '', 'Kotak'],
+        ['2025-06-01', 3700, 'Household > House Help', 'Maid', '', 'Kotak'],
+        ['2025-06-02', 2370, 'Household > Grocery', 'Momaji Grocery', '', 'Kotak'],
+        ['2025-06-02', 325, 'Subscriptions > Subscriptions', 'Global Machining Website', '', 'Kotak'],
+        ['2025-06-03', 440, 'Entertainment > Entertainment', 'Pickleball', '', 'Kotak'],
+        ['2025-06-03', 120, 'Food > Food', 'Kulfi', '', 'Kotak'],
+        ['2025-06-04', 527, 'Fuel > Honda City', 'City CNG', '', 'Kotak'],
+        ['2025-06-05', 420, 'Food > Food', 'Bhaji Pav', '', 'Kotak'],
+        ['2025-06-05', 90, 'Fuel > Eon', 'Chhas', '', 'Kotak'],
+        ['2025-06-06', 523, 'Fuel > Honda City', 'City CNG', '', 'Kotak'],
+        ['2025-06-07', 110, 'Vyomi > Vyomi', 'Vyomi', '', 'Kotak'],
+        ['2025-06-10', 570, 'Household > Grocery', 'Mango', '', 'Kotak'],
+        ['2025-06-12', 596, 'Fuel > Honda City', 'City CNG', '', 'Kotak'],
+        ['2025-06-12', 3251, 'Transportation > Insurance', 'Eon Insurance', 'Yearly Major Expenses', 'Kotak'],
+        ['2025-06-14', 1000, 'Fuel > Honda City', 'City Petrol', '', 'Kotak'],
+        ['2025-06-15', 1079, 'Household > Grocery', 'Swiggy Grocery', '', 'Kotak'],
+        ['2025-06-21', 59, 'Subscriptions > Subscriptions', 'Google Drive BB', '', 'Kotak'],
+        ['2025-06-23', 510, 'Entertainment > Entertainment', 'Blinkit Board Game', '', 'Kotak'],
+        ['2025-06-27', 2844, 'Household > Grocery', 'Dmart', '', 'Kotak'],
+        ['2025-06-28', 550, 'Social Life > Social Life', 'Swiggy Food', '', 'Kotak'],
+        ['2025-06-30', 40000, 'Income > Income', 'Monthly Load', '', 'Kotak'],
+        ['2025-06-30', 3700, 'Household > House Help', 'Maid', '', 'Kotak']
       ];
       
       const sheetsTransactions = simulatedSheetData.map((row, index) => convertSheetRowToTransaction(row, index));
       
       setTransactions(sheetsTransactions);
       setOriginalTransactions(sheetsTransactions);
-      
-      // Calculate balances from the data
-      const currentBalance = sheetsTransactions.length > 0 ? parseFloat(sheetsTransactions[0].amount) : 25890.7;
-      setBalances({
-        'Kotak': currentBalance,
-        'ICICI Credit Card': 0,
-        'HDFC Credit Card': 0
-      });
       
     } catch (error) {
       console.error('Failed to load data from sheets:', error);
@@ -1064,21 +977,8 @@ const ExpenseTracker = () => {
     if (!sheetsConfig.isConnected) return;
     
     try {
-      // Simulate API call to Google Sheets
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      if (action === 'add') {
-        // Add to sheets: append row
-        console.log('Adding to sheets:', transaction);
-      } else if (action === 'update') {
-        // Update in sheets: find and update row
-        console.log('Updating in sheets:', transaction);
-      } else if (action === 'delete') {
-        // Delete from sheets: remove row
-        console.log('Deleting from sheets:', transaction);
-      }
-      
-      // Mark as synced
       setTransactions(prev => 
         prev.map(t => t.id === transaction.id ? { ...t, synced: true } : t)
       );
@@ -1095,14 +995,12 @@ const ExpenseTracker = () => {
     
     setSyncStatus('syncing');
     try {
-      // Sync unsynced transactions
       const unsyncedTransactions = transactions.filter(t => !t.synced);
       
       for (const transaction of unsyncedTransactions) {
         await syncToGoogleSheets(transaction, 'add');
       }
       
-      // Reload all data from sheets to get any new data
       await loadAllDataFromSheets(sheetsConfig.spreadsheetId, sheetsConfig.apiKey);
       
       setSyncStatus('success');
@@ -1139,18 +1037,15 @@ const ExpenseTracker = () => {
     };
 
     if (editingTransaction) {
-      // Update existing transaction
       setTransactions(prev => 
         prev.map(t => t.id === editingTransaction.id ? transactionData : t)
       );
       await syncToGoogleSheets(transactionData, 'update');
     } else {
-      // Add new transaction
       setTransactions(prev => [transactionData, ...prev]);
       await syncToGoogleSheets(transactionData, 'add');
     }
 
-    // Update balance
     const amount = parseFloat(formData.amount);
     setBalances(prev => ({
       ...prev,
@@ -1159,7 +1054,6 @@ const ExpenseTracker = () => {
         : prev[formData.account] - amount
     }));
 
-    // Reset form
     setFormData({
       date: new Date().toISOString().split('T')[0],
       amount: '',
@@ -1206,27 +1100,15 @@ const ExpenseTracker = () => {
     return transactions.filter(t => {
       const tDate = new Date(t.date);
       
-      // Search filter
       const matchesSearch = !filters.search || 
         t.description.toLowerCase().includes(filters.search.toLowerCase()) ||
         t.category.toLowerCase().includes(filters.search.toLowerCase());
       
-      // Category filter
       const matchesCategory = !filters.category || t.category.includes(filters.category);
-      
-      // Account filter
       const matchesAccount = !filters.account || t.account === filters.account;
-      
-      // Type filter
       const matchesType = !filters.type || t.type === filters.type;
-      
-      // Month filter
       const matchesMonth = !filters.month || tDate.getMonth() === parseInt(filters.month);
-      
-      // Year filter
       const matchesYear = !filters.year || tDate.getFullYear() === parseInt(filters.year);
-      
-      // Date range filter
       const matchesDateFrom = !filters.dateFrom || t.date >= filters.dateFrom;
       const matchesDateTo = !filters.dateTo || t.date <= filters.dateTo;
       
@@ -1307,7 +1189,6 @@ const ExpenseTracker = () => {
 
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
-      {/* Loading overlay */}
       {isLoading && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
           <div className="bg-white rounded-2xl p-8 shadow-2xl">
@@ -1401,4 +1282,70 @@ const ExpenseTracker = () => {
               }`}
             >
               <CreditCard className="inline w-5 h-5 mr-2" />
-              Transactions
+              Transactions ({filteredTransactions.length})
+            </button>
+          </nav>
+        </div>
+      </div>
+
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Sync Status Banner */}
+        {syncStatus !== 'idle' && (
+          <div className={`mb-6 p-4 rounded-xl border ${
+            syncStatus === 'success' ? 'bg-green-50 border-green-200 text-green-800' :
+            syncStatus === 'error' ? 'bg-red-50 border-red-200 text-red-800' :
+            'bg-blue-50 border-blue-200 text-blue-800'
+          }`}>
+            <div className="flex items-center space-x-3">
+              {syncStatus === 'syncing' && <RefreshCw className="w-5 h-5 animate-spin" />}
+              {syncStatus === 'success' && <CheckCircle className="w-5 h-5" />}
+              {syncStatus === 'error' && <AlertTriangle className="w-5 h-5" />}
+              <span className="font-medium">
+                {syncStatus === 'syncing' && 'Syncing with Google Sheets...'}
+                {syncStatus === 'success' && 'Successfully synced with Google Sheets!'}
+                {syncStatus === 'error' && 'Failed to sync with Google Sheets. Please try again.'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Dashboard */}
+        {currentView === 'dashboard' && (
+          <div className="space-y-8">
+            {/* Key Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="group relative bg-white/80 backdrop-blur-xl p-6 rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-500 border border-white/50">
+                <div className="absolute inset-0 bg-gradient-to-r from-green-400/10 to-emerald-400/10 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl shadow-lg">
+                      <DollarSign className="h-6 w-6 text-white" />
+                    </div>
+                    <div className="text-xs font-medium text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                      {sheetsConfig.isConnected ? 'Synced' : 'Local'}
+                    </div>
+                  </div>
+                  <p className="text-sm font-semibold text-gray-600 mb-1">Total Balance</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {balanceVisible ? `₹${totalBalance.toLocaleString('en-IN')}` : '••••••'}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="group relative bg-white/80 backdrop-blur-xl p-6 rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-500 border border-white/50">
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-400/10 to-cyan-400/10 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-3 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-2xl shadow-lg">
+                      <TrendingUp className="h-6 w-6 text-white" />
+                    </div>
+                    <div className="text-xs font-medium text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                      This Month
+                    </div>
+                  </div>
+                  <p className="text-sm font-semibold text-gray-600 mb-1">Income</p>
+                  <p className="text-2xl font-bold text-gray-900">₹{currentMonthIncome.toLocaleString('en-IN')}</p>
+                </div>
+              </div>
+              
+              <div className="group relative bg-white/80 backdrop-blur-xl p-6 rounded-3xl shadow-lg
