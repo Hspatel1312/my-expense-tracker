@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { PlusCircle, BarChart3, CreditCard, TrendingUp, Calendar, Filter, Search, DollarSign, ArrowUpDown, Wallet, Eye, EyeOff, ChevronRight, Sparkles, Target, PieChart, Activity, TrendingDown, AlertTriangle, CheckCircle, ArrowUp, ArrowDown, Zap, Star, Award } from 'lucide-react';
-import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, Area, AreaChart } from 'recharts';
+import React, { useState } from 'react';
+import { PlusCircle, BarChart3, CreditCard, TrendingUp, Search, DollarSign, ArrowUpDown, Wallet, Eye, EyeOff, ChevronRight, Sparkles, Target, PieChart, Activity, AlertTriangle, CheckCircle, ArrowUp, ArrowDown, Zap, Star, Award } from 'lucide-react';
+import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Area, AreaChart } from 'recharts';
 
 const ExpenseTracker = () => {
   // Categories from your Google Sheet
@@ -63,7 +63,7 @@ const ExpenseTracker = () => {
 
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [isFormVisible, setIsFormVisible] = useState(false);
-  const [selectedPeriod, setSelectedPeriod] = useState('thisMonth');
+ 
 
   // Form state
   const [formData, setFormData] = useState({
