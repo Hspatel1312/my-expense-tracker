@@ -1,4 +1,471 @@
-{syncStatus === 'error' && <AlertTriangle className="w-5 h-5" />}
+import React, { useState, useEffect } from 'react';
+import { PlusCircle, BarChart3, CreditCard, TrendingUp, Search, DollarSign, ArrowUpDown, Wallet, Eye, EyeOff, Sparkles, Target, PieChart, Activity, AlertTriangle, CheckCircle, Star, Award, RefreshCw, Cloud, CloudOff, Trash2, Edit, Filter, X } from 'lucide-react';
+import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+
+const ExpenseTracker = () => {
+  // Google Sheets Configuration
+  const [sheetsConfig, setSheetsConfig] = useState({
+    spreadsheetId: '',
+    apiKey: '',
+    isConnected: false,
+    lastSync: null
+  });
+
+  const [syncStatus, setSyncStatus] = useState('idle');
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Data from your Google Sheets "Data" sheet
+  const [masterData] = useState({
+    categories: [
+      { main: 'Food', sub: 'Food', combined: 'Food > Food' },
+      { main: 'Fuel', sub: 'Honda City', combined: 'Fuel > Honda City' },
+      { main: 'Fuel', sub: 'Aviator', combined: 'Fuel > Aviator' },
+      { main: 'Fuel', sub: 'Eon', combined: 'Fuel > Eon' },
+      { main: 'Culture', sub: 'Culture', combined: 'Culture > Culture' },
+      { main: 'Household', sub: 'Grocery', combined: 'Household > Grocery' },
+      { main: 'Household', sub: 'Laundry', combined: 'Household > Laundry' },
+      { main: 'Household', sub: 'House Help', combined: 'Household > House Help' },
+      { main: 'Household', sub: 'Appliances', combined: 'Household > Appliances' },
+      { main: 'Household', sub: 'Bills', combined: 'Household > Bills' },
+      { main: 'Apparel', sub: 'Apparel', combined: 'Apparel > Apparel' },
+      { main: 'Beauty', sub: 'Beauty', combined: 'Beauty > Beauty' },
+      { main: 'Health', sub: 'Preventive', combined: 'Health > Preventive' },
+      { main: 'Health', sub: 'Medical', combined: 'Health > Medical' },
+      { main: 'Education', sub: 'Education', combined: 'Education > Education' },
+      { main: 'Transportation', sub: 'Maintenance', combined: 'Transportation > Maintenance' },
+      { main: 'Transportation', sub: 'Insurance', combined: 'Transportation > Insurance' },
+      { main: 'Vyomi', sub: 'Vyomi', combined: 'Vyomi > Vyomi' },
+      { main: 'Vacation', sub: 'Family', combined: 'Vacation > Family' },
+      { main: 'Vacation', sub: 'Own', combined: 'Vacation > Own' },
+      { main: 'Subscriptions', sub: 'Subscriptions', combined: 'Subscriptions > Subscriptions' },
+      { main: 'Misc', sub: 'Misc', combined: 'Misc > Misc' },
+      { main: 'Income', sub: 'Income', combined: 'Income > Income' },
+      { main: 'Income', sub: 'Reload', combined: 'Income > Reload' },
+      { main: 'Income', sub: 'Others', combined: 'Income > Others' },
+      { main: 'Social Life', sub: 'Social Life', combined: 'Social Life > Social Life' },
+      { main: 'Entertainment', sub: 'Entertainment', combined: 'Entertainment > Entertainment' }
+    ],
+    accounts: ['Kotak', 'ICICI Credit Card', 'HDFC Credit Card']
+  });
+
+  const categoryColors = {
+    'Food': '#FF6B6B',
+    'Social Life': '#4ECDC4',
+    'Entertainment': '#45B7D1',
+    'Fuel': '#FFA726',
+    'Culture': '#66BB6A',
+    'Household': '#42A5F5',
+    'Apparel': '#AB47BC',
+    'Beauty': '#EC407A',
+    'Health': '#26A69A',
+    'Education': '#5C6BC0',
+    'Transportation': '#78909C',
+    'Vyomi': '#26C6DA',
+    'Vacation': '#FF7043',
+    'Subscriptions': '#9CCC65',
+    'Misc': '#8D6E63',
+    'Income': '#66BB6A'
+  };
+
+  // All transactions (from Google Sheets + new ones)
+  const [transactions, setTransactions] = useState([]);
+  const [originalTransactions, setOriginalTransactions] = useState([]);
+
+  const [balances, setBalances] = useState({
+    'Kotak': 25890.7,
+    'ICICI Credit Card': 0,
+    'HDFC Credit Card': 0
+  });
+
+  const [balanceVisible, setBalanceVisible] = useState(true);
+  const [isFormVisible, setIsFormVisible] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState(null);
+
+  // Form state
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    amount: '',
+    category: '',
+    description: '',
+    account: 'Kotak',
+    tag: ''
+  });
+
+  // Autocomplete states
+  const [categorySearch, setCategorySearch] = useState('');
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [accountSearch, setAccountSearch] = useState('Kotak');
+  const [showAccountDropdown, setShowAccountDropdown] = useState(false);
+
+  const [currentView, setCurrentView] = useState('dashboard');
+  
+  // Enhanced filters
+  const [filters, setFilters] = useState({
+    search: '',
+    category: '',
+    account: '',
+    type: '',
+    month: '',
+    year: '',
+    dateFrom: '',
+    dateTo: ''
+  });
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Generate filter options
+  const years = [...new Set(transactions.map(t => new Date(t.date).getFullYear()))].sort((a, b) => b - a);
+  const months = [
+    { value: '0', label: 'January' }, { value: '1', label: 'February' }, { value: '2', label: 'March' },
+    { value: '3', label: 'April' }, { value: '4', label: 'May' }, { value: '5', label: 'June' },
+    { value: '6', label: 'July' }, { value: '7', label: 'August' }, { value: '8', label: 'September' },
+    { value: '9', label: 'October' }, { value: '10', label: 'November' }, { value: '11', label: 'December' }
+  ];
+
+  // Filter categories and accounts based on search
+  const filteredCategories = masterData.categories.filter(cat =>
+    cat.combined.toLowerCase().includes(categorySearch.toLowerCase())
+  );
+
+  const filteredAccounts = masterData.accounts.filter(acc =>
+    acc.toLowerCase().includes(accountSearch.toLowerCase())
+  );
+
+  // Parse category to get main and sub
+  const parseCategory = (categoryString) => {
+    const parts = categoryString.split(' > ');
+    return {
+      main: parts[0] || '',
+      sub: parts[1] || parts[0] || '',
+      combined: categoryString
+    };
+  };
+
+  // Auto-determine transaction type based on category
+  const getTransactionType = (category) => {
+    const mainCategory = parseCategory(category).main;
+    return mainCategory === 'Income' ? 'Income' : 'Expense';
+  };
+
+  // Convert Google Sheets row to transaction object
+  const convertSheetRowToTransaction = (row, index) => {
+    return {
+      id: `sheet_${index}`,
+      date: row[0] ? new Date(row[0]).toISOString().split('T')[0] : '',
+      amount: parseFloat(row[1]) || 0,
+      category: row[2] || '',
+      description: row[3] || '',
+      tag: row[4] || '',
+      account: row[5] || 'Kotak',
+      type: row[8] || getTransactionType(row[2] || ''),
+      synced: true,
+      source: 'sheets'
+    };
+  };
+
+  // Google Sheets API Functions
+  const connectToGoogleSheets = async (spreadsheetId, apiKey) => {
+    setSyncStatus('syncing');
+    setIsLoading(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      setSheetsConfig({
+        spreadsheetId,
+        apiKey,
+        isConnected: true,
+        lastSync: new Date().toISOString()
+      });
+      
+      await loadAllDataFromSheets(spreadsheetId, apiKey);
+      setSyncStatus('success');
+      setTimeout(() => setSyncStatus('idle'), 2000);
+      
+    } catch (error) {
+      setSyncStatus('error');
+      console.error('Failed to connect to Google Sheets:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadAllDataFromSheets = async (spreadsheetId, apiKey) => {
+    try {
+      // Simulated data from your actual Google Sheets
+      const simulatedSheetData = [
+        ['2025-05-31', 40000, 'Income > Income', 'Monthly Load', '', 'Kotak', 'Income', 'Income', 'Income', 24686, 5416, 'June 2025', '2025'],
+        ['2025-06-01', 3700, 'Household > House Help', 'Maid', '', 'Kotak', 'Household', 'House Help', 'Expense', 20986, 5416, 'June 2025', '2025'],
+        ['2025-06-02', 2370, 'Household > Grocery', 'Momaji Grocery', '', 'Kotak', 'Household', 'Grocery', 'Expense', 18616, 5416, 'June 2025', '2025'],
+        ['2025-06-02', 325, 'Subscriptions > Subscriptions', 'Global Machining Website', '', 'Kotak', 'Subscriptions', 'Subscriptions', 'Expense', 18291, 5416, 'June 2025', '2025'],
+        ['2025-06-03', 440, 'Entertainment > Entertainment', 'Pickleball', '', 'Kotak', 'Entertainment', 'Entertainment', 'Expense', 17851, 5416, 'June 2025', '2025'],
+        ['2025-06-03', 120, 'Food > Food', 'Kulfi', '', 'Kotak', 'Food', 'Food', 'Expense', 17731, 5416, 'June 2025', '2025'],
+        ['2025-06-04', 527, 'Fuel > Honda City', 'City CNG', '', 'Kotak', 'Fuel', 'Honda City', 'Expense', 17005, 5416, 'June 2025', '2025'],
+        ['2025-06-05', 420, 'Food > Food', 'Bhaji Pav', '', 'Kotak', 'Food', 'Food', 'Expense', 16423, 5416, 'June 2025', '2025'],
+        ['2025-06-05', 90, 'Fuel > Eon', 'Chhas', '', 'Kotak', 'Fuel', 'Eon', 'Expense', 16173, 5416, 'June 2025', '2025'],
+        ['2025-06-06', 523, 'Fuel > Honda City', 'City CNG', '', 'Kotak', 'Fuel', 'Honda City', 'Expense', 13028, 5416, 'June 2025', '2025'],
+        ['2025-06-07', 110, 'Vyomi > Vyomi', 'Vyomi', '', 'Kotak', 'Vyomi', 'Vyomi', 'Expense', 12659, 5416, 'June 2025', '2025'],
+        ['2025-06-10', 570, 'Household > Grocery', 'Mango', '', 'Kotak', 'Household', 'Grocery', 'Expense', 11755, 5416, 'June 2025', '2025'],
+        ['2025-06-12', 596, 'Fuel > Honda City', 'City CNG', '', 'Kotak', 'Fuel', 'Honda City', 'Expense', 10959, 5416, 'June 2025', '2025'],
+        ['2025-06-12', 3251, 'Transportation > Insurance', 'Eon Insurance', 'Yearly Major Expenses', 'Kotak', 'Transportation', 'Insurance', 'Expense', 7708, 5416, 'June 2025', '2025'],
+        ['2025-06-14', 1000, 'Fuel > Honda City', 'City Petrol', '', 'Kotak', 'Fuel', 'Honda City', 'Expense', 6626, 5416, 'June 2025', '2025'],
+        ['2025-06-15', 1079, 'Household > Grocery', 'Swiggy Grocery', '', 'Kotak', 'Household', 'Grocery', 'Expense', 4212, 5416, 'June 2025', '2025'],
+        ['2025-06-21', 59, 'Subscriptions > Subscriptions', 'Google Drive BB', '', 'Kotak', 'Subscriptions', 'Subscriptions', 'Expense', 3007, 5416, 'June 2025', '2025'],
+        ['2025-06-23', 510, 'Entertainment > Entertainment', 'Blinkit Board Game', '', 'Kotak', 'Entertainment', 'Entertainment', 'Expense', 1782, 5416, 'June 2025', '2025'],
+        ['2025-06-27', 2844, 'Household > Grocery', 'Dmart', '', 'Kotak', 'Household', 'Grocery', 'Expense', -1880, 5416, 'June 2025', '2025'],
+        ['2025-06-28', 550, 'Social Life > Social Life', 'Swiggy Food', '', 'Kotak', 'Social Life', 'Social Life', 'Expense', -2430, 5416, 'June 2025', '2025'],
+        ['2025-06-30', 40000, 'Income > Income', 'Monthly Load', '', 'Kotak', 'Income', 'Income', 'Income', 29590, 5416, 'July 2025', '2025'],
+        ['2025-06-30', 3700, 'Household > House Help', 'Maid', '', 'Kotak', 'Household', 'House Help', 'Expense', 25890, 5416, 'July 2025', '2025']
+      ];
+      
+      const sheetsTransactions = simulatedSheetData.map((row, index) => convertSheetRowToTransaction(row, index));
+      
+      setTransactions(sheetsTransactions);
+      setOriginalTransactions(sheetsTransactions);
+      
+      // Calculate balances from the data
+      const currentBalance = sheetsTransactions.length > 0 ? parseFloat(sheetsTransactions[0].amount) : 25890.7;
+      setBalances({
+        'Kotak': currentBalance,
+        'ICICI Credit Card': 0,
+        'HDFC Credit Card': 0
+      });
+      
+    } catch (error) {
+      console.error('Failed to load data from sheets:', error);
+    }
+  };
+
+  const syncToGoogleSheets = async (transaction, action = 'add') => {
+    if (!sheetsConfig.isConnected) return;
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      if (action === 'add') {
+        console.log('Adding to sheets:', transaction);
+      } else if (action === 'update') {
+        console.log('Updating in sheets:', transaction);
+      } else if (action === 'delete') {
+        console.log('Deleting from sheets:', transaction);
+      }
+      
+      setTransactions(prev => 
+        prev.map(t => t.id === transaction.id ? { ...t, synced: true } : t)
+      );
+      
+      setSheetsConfig(prev => ({ ...prev, lastSync: new Date().toISOString() }));
+      
+    } catch (error) {
+      console.error('Failed to sync to Google Sheets:', error);
+    }
+  };
+
+  const manualSync = async () => {
+    if (!sheetsConfig.isConnected) return;
+    
+    setSyncStatus('syncing');
+    try {
+      const unsyncedTransactions = transactions.filter(t => !t.synced);
+      
+      for (const transaction of unsyncedTransactions) {
+        await syncToGoogleSheets(transaction, 'add');
+      }
+      
+      await loadAllDataFromSheets(sheetsConfig.spreadsheetId, sheetsConfig.apiKey);
+      
+      setSyncStatus('success');
+      setTimeout(() => setSyncStatus('idle'), 2000);
+      
+    } catch (error) {
+      setSyncStatus('error');
+      setTimeout(() => setSyncStatus('idle'), 2000);
+    }
+  };
+
+  // Add/Edit transaction
+  const addTransaction = async () => {
+    if (!formData.amount || !formData.category || !formData.description) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    const categoryData = parseCategory(formData.category);
+    const transactionType = getTransactionType(formData.category);
+
+    const transactionData = {
+      id: editingTransaction ? editingTransaction.id : Date.now(),
+      date: formData.date,
+      amount: parseFloat(formData.amount),
+      category: categoryData.combined,
+      description: formData.description,
+      account: formData.account,
+      type: transactionType,
+      tag: formData.tag || '',
+      timestamp: new Date().toISOString(),
+      synced: false,
+      source: 'app'
+    };
+
+    if (editingTransaction) {
+      setTransactions(prev => 
+        prev.map(t => t.id === editingTransaction.id ? transactionData : t)
+      );
+      await syncToGoogleSheets(transactionData, 'update');
+    } else {
+      setTransactions(prev => [transactionData, ...prev]);
+      await syncToGoogleSheets(transactionData, 'add');
+    }
+
+    const amount = parseFloat(formData.amount);
+    setBalances(prev => ({
+      ...prev,
+      [formData.account]: transactionType === 'Income' 
+        ? prev[formData.account] + amount
+        : prev[formData.account] - amount
+    }));
+
+    setFormData({
+      date: new Date().toISOString().split('T')[0],
+      amount: '',
+      category: '',
+      description: '',
+      account: 'Kotak',
+      tag: ''
+    });
+    setCategorySearch('');
+    setAccountSearch('Kotak');
+    setEditingTransaction(null);
+    setIsFormVisible(false);
+  };
+
+  // Delete transaction
+  const deleteTransaction = async (transaction) => {
+    if (window.confirm('Are you sure you want to delete this transaction?')) {
+      setTransactions(prev => prev.filter(t => t.id !== transaction.id));
+      
+      if (sheetsConfig.isConnected && transaction.source === 'sheets') {
+        await syncToGoogleSheets(transaction, 'delete');
+      }
+    }
+  };
+
+  // Edit transaction
+  const editTransaction = (transaction) => {
+    setEditingTransaction(transaction);
+    setFormData({
+      date: transaction.date,
+      amount: transaction.amount.toString(),
+      category: transaction.category,
+      description: transaction.description,
+      account: transaction.account,
+      tag: transaction.tag || ''
+    });
+    setCategorySearch(transaction.category);
+    setAccountSearch(transaction.account);
+    setIsFormVisible(true);
+  };
+
+  // Enhanced filtering
+  const getFilteredTransactions = () => {
+    return transactions.filter(t => {
+      const tDate = new Date(t.date);
+      
+      const matchesSearch = !filters.search || 
+        t.description.toLowerCase().includes(filters.search.toLowerCase()) ||
+        t.category.toLowerCase().includes(filters.search.toLowerCase());
+      
+      const matchesCategory = !filters.category || t.category.includes(filters.category);
+      const matchesAccount = !filters.account || t.account === filters.account;
+      const matchesType = !filters.type || t.type === filters.type;
+      const matchesMonth = !filters.month || tDate.getMonth() === parseInt(filters.month);
+      const matchesYear = !filters.year || tDate.getFullYear() === parseInt(filters.year);
+      const matchesDateFrom = !filters.dateFrom || t.date >= filters.dateFrom;
+      const matchesDateTo = !filters.dateTo || t.date <= filters.dateTo;
+      
+      return matchesSearch && matchesCategory && matchesAccount && matchesType && 
+             matchesMonth && matchesYear && matchesDateFrom && matchesDateTo;
+    });
+  };
+
+  const filteredTransactions = getFilteredTransactions();
+
+  // Calculate analytics from ALL transactions
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+
+  const currentMonthTransactions = transactions.filter(t => {
+    const tDate = new Date(t.date);
+    return tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear;
+  });
+
+  const currentMonthExpenses = currentMonthTransactions
+    .filter(t => t.type === 'Expense')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const currentMonthIncome = currentMonthTransactions
+    .filter(t => t.type === 'Income')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  // Category breakdown for charts from ALL data
+  const categoryTotals = {};
+  currentMonthTransactions.forEach(t => {
+    if (t.type === 'Expense') {
+      const mainCategory = parseCategory(t.category).main;
+      categoryTotals[mainCategory] = (categoryTotals[mainCategory] || 0) + t.amount;
+    }
+  });
+
+  const pieChartData = Object.entries(categoryTotals).map(([name, value]) => ({
+    name,
+    value,
+    color: categoryColors[name]
+  }));
+
+  const totalBalance = Object.values(balances).reduce((sum, balance) => sum + balance, 0);
+  const savingsRate = currentMonthIncome > 0 ? ((currentMonthIncome - currentMonthExpenses) / currentMonthIncome) * 100 : 0;
+
+  const topCategories = Object.entries(categoryTotals)
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, 5);
+
+  // Clear all filters
+  const clearFilters = () => {
+    setFilters({
+      search: '',
+      category: '',
+      account: '',
+      type: '',
+      month: '',
+      year: '',
+      dateFrom: '',
+      dateTo: ''
+    });
+  };
+
+  // Click outside handlers
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!event.target.closest('.category-dropdown')) {
+        setShowCategoryDropdown(false);
+      }
+      if (!event.target.closest('.account-dropdown')) {
+        setShowAccountDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
+      {isLoading && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white rounded-2xl p-8 shadow-2xl">
+            <div className="flex items-center space-x-3">
+              {syncStatus === 'syncing' && <RefreshCw className="w-5 h-5 animate-spin" />}
+              {syncStatus === 'success' && <CheckCircle className="w-5 h-5" />}
+              {syncStatus === 'error' && <AlertTriangle className="w-5 h-5" />}
               <span className="font-medium">
                 {syncStatus === 'syncing' && 'Syncing with Google Sheets...'}
                 {syncStatus === 'success' && 'Successfully synced with Google Sheets!'}
@@ -499,471 +966,253 @@
                   }}
                   className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-all duration-200"
                 >
-                  import React, { useState, useEffect } from 'react';
-import { PlusCircle, BarChart3, CreditCard, TrendingUp, Search, DollarSign, ArrowUpDown, Wallet, Eye, EyeOff, Sparkles, Target, PieChart, Activity, AlertTriangle, CheckCircle, Star, Award, RefreshCw, Cloud, CloudOff, Trash2, Edit, Filter } from 'lucide-react';
-import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
 
-const ExpenseTracker = () => {
-  // Google Sheets Configuration
-  const [sheetsConfig, setSheetsConfig] = useState({
-    spreadsheetId: '',
-    apiKey: '',
-    isConnected: false,
-    lastSync: null
-  });
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Date</label>
+                    <input
+                      type="date"
+                      value={formData.date}
+                      onChange={(e) => setFormData({...formData, date: e.target.value})}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Amount (₹)</label>
+                    <input
+                      type="number"
+                      placeholder="0.00"
+                      value={formData.amount}
+                      onChange={(e) => setFormData({...formData, amount: e.target.value})}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                    />
+                  </div>
+                </div>
 
-  const [syncStatus, setSyncStatus] = useState('idle');
-  const [showSyncModal, setShowSyncModal] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Category</label>
+                  <div className="relative category-dropdown">
+                    <input
+                      type="text"
+                      placeholder="Search categories..."
+                      value={categorySearch}
+                      onChange={(e) => {
+                        setCategorySearch(e.target.value);
+                        setFormData({...formData, category: e.target.value});
+                        setShowCategoryDropdown(true);
+                      }}
+                      onFocus={() => setShowCategoryDropdown(true)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                    />
+                    {showCategoryDropdown && filteredCategories.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                        {filteredCategories.map((category, index) => (
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={() => {
+                              setFormData({...formData, category: category.combined});
+                              setCategorySearch(category.combined);
+                              setShowCategoryDropdown(false);
+                            }}
+                            className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors duration-200 border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="flex items-center space-x-3">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: categoryColors[category.main] }}></div>
+                              <span className="font-medium text-gray-900">{category.main}</span>
+                              <span className="text-gray-500">→</span>
+                              <span className="text-gray-600">{category.sub}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-  // Data from your Google Sheets "Data" sheet
-  const [masterData] = useState({
-    categories: [
-      { main: 'Food', sub: 'Food', combined: 'Food > Food' },
-      { main: 'Fuel', sub: 'Honda City', combined: 'Fuel > Honda City' },
-      { main: 'Fuel', sub: 'Aviator', combined: 'Fuel > Aviator' },
-      { main: 'Fuel', sub: 'Eon', combined: 'Fuel > Eon' },
-      { main: 'Culture', sub: 'Culture', combined: 'Culture > Culture' },
-      { main: 'Household', sub: 'Grocery', combined: 'Household > Grocery' },
-      { main: 'Household', sub: 'Laundry', combined: 'Household > Laundry' },
-      { main: 'Household', sub: 'House Help', combined: 'Household > House Help' },
-      { main: 'Household', sub: 'Appliances', combined: 'Household > Appliances' },
-      { main: 'Household', sub: 'Bills', combined: 'Household > Bills' },
-      { main: 'Apparel', sub: 'Apparel', combined: 'Apparel > Apparel' },
-      { main: 'Beauty', sub: 'Beauty', combined: 'Beauty > Beauty' },
-      { main: 'Health', sub: 'Preventive', combined: 'Health > Preventive' },
-      { main: 'Health', sub: 'Medical', combined: 'Health > Medical' },
-      { main: 'Education', sub: 'Education', combined: 'Education > Education' },
-      { main: 'Transportation', sub: 'Maintenance', combined: 'Transportation > Maintenance' },
-      { main: 'Transportation', sub: 'Insurance', combined: 'Transportation > Insurance' },
-      { main: 'Vyomi', sub: 'Vyomi', combined: 'Vyomi > Vyomi' },
-      { main: 'Vacation', sub: 'Family', combined: 'Vacation > Family' },
-      { main: 'Vacation', sub: 'Own', combined: 'Vacation > Own' },
-      { main: 'Subscriptions', sub: 'Subscriptions', combined: 'Subscriptions > Subscriptions' },
-      { main: 'Misc', sub: 'Misc', combined: 'Misc > Misc' },
-      { main: 'Income', sub: 'Income', combined: 'Income > Income' },
-      { main: 'Income', sub: 'Reload', combined: 'Income > Reload' },
-      { main: 'Income', sub: 'Others', combined: 'Income > Others' },
-      { main: 'Social Life', sub: 'Social Life', combined: 'Social Life > Social Life' },
-      { main: 'Entertainment', sub: 'Entertainment', combined: 'Entertainment > Entertainment' }
-    ],
-    accounts: ['Kotak', 'ICICI Credit Card', 'HDFC Credit Card']
-  });
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
+                  <input
+                    type="text"
+                    placeholder="Enter transaction description..."
+                    value={formData.description}
+                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                  />
+                </div>
 
-  const categoryColors = {
-    'Food': '#FF6B6B',
-    'Social Life': '#4ECDC4',
-    'Entertainment': '#45B7D1',
-    'Fuel': '#FFA726',
-    'Culture': '#66BB6A',
-    'Household': '#42A5F5',
-    'Apparel': '#AB47BC',
-    'Beauty': '#EC407A',
-    'Health': '#26A69A',
-    'Education': '#5C6BC0',
-    'Transportation': '#78909C',
-    'Vyomi': '#26C6DA',
-    'Vacation': '#FF7043',
-    'Subscriptions': '#9CCC65',
-    'Misc': '#8D6E63',
-    'Income': '#66BB6A'
-  };
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Account</label>
+                    <div className="relative account-dropdown">
+                      <input
+                        type="text"
+                        placeholder="Search accounts..."
+                        value={accountSearch}
+                        onChange={(e) => {
+                          setAccountSearch(e.target.value);
+                          setFormData({...formData, account: e.target.value});
+                          setShowAccountDropdown(true);
+                        }}
+                        onFocus={() => setShowAccountDropdown(true)}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                      />
+                      {showAccountDropdown && filteredAccounts.length > 0 && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                          {filteredAccounts.map((account, index) => (
+                            <button
+                              key={index}
+                              type="button"
+                              onClick={() => {
+                                setFormData({...formData, account});
+                                setAccountSearch(account);
+                                setShowAccountDropdown(false);
+                              }}
+                              className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors duration-200 border-b border-gray-100 last:border-b-0"
+                            >
+                              <span className="font-medium text-gray-900">{account}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-  // All transactions (from Google Sheets + new ones)
-  const [transactions, setTransactions] = useState([]);
-  const [originalTransactions, setOriginalTransactions] = useState([]);
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Tag (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="Add a tag..."
+                      value={formData.tag}
+                      onChange={(e) => setFormData({...formData, tag: e.target.value})}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                    />
+                  </div>
+                </div>
 
-  const [balances, setBalances] = useState({
-    'Kotak': 25890.7,
-    'ICICI Credit Card': 0,
-    'HDFC Credit Card': 0
-  });
+                <div className="flex space-x-4 pt-6">
+                  <button
+                    onClick={addTransaction}
+                    className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  >
+                    {editingTransaction ? 'Update Transaction' : 'Add Transaction'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsFormVisible(false);
+                      setEditingTransaction(null);
+                    }}
+                    className="px-6 py-3 border border-gray-200 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-xl font-semibold transition-all duration-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-  const [balanceVisible, setBalanceVisible] = useState(true);
-  const [isFormVisible, setIsFormVisible] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState(null);
+      {/* Google Sheets Connection Modal */}
+      {showSyncModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-md" onClick={() => setShowSyncModal(false)}></div>
+          <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-md border border-white/20">
+            <div className="p-8">
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="p-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl">
+                  <Cloud className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Google Sheets Integration</h2>
+                  <p className="text-gray-500">Connect to sync your data</p>
+                </div>
+              </div>
 
-  // Form state
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    amount: '',
-    category: '',
-    description: '',
-    account: 'Kotak',
-    tag: ''
-  });
+              {sheetsConfig.isConnected ? (
+                <div className="space-y-4">
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                    <div className="flex items-center space-x-2">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <span className="font-medium text-green-800">Connected to Google Sheets</span>
+                    </div>
+                    {sheetsConfig.lastSync && (
+                      <p className="text-sm text-green-600 mt-1">
+                        Last synced: {new Date(sheetsConfig.lastSync).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                  
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={manualSync}
+                      disabled={syncStatus === 'syncing'}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-2 px-4 rounded-xl font-medium transition-all duration-200"
+                    >
+                      {syncStatus === 'syncing' ? 'Syncing...' : 'Manual Sync'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSheetsConfig({
+                          spreadsheetId: '',
+                          apiKey: '',
+                          isConnected: false,
+                          lastSync: null
+                        });
+                        setTransactions([]);
+                      }}
+                      className="px-4 py-2 border border-red-200 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-xl font-medium transition-all duration-200"
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    placeholder="Google Sheets Spreadsheet ID"
+                    value={sheetsConfig.spreadsheetId}
+                    onChange={(e) => setSheetsConfig({...sheetsConfig, spreadsheetId: e.target.value})}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Google Sheets API Key"
+                    value={sheetsConfig.apiKey}
+                    onChange={(e) => setSheetsConfig({...sheetsConfig, apiKey: e.target.value})}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={() => connectToGoogleSheets(sheetsConfig.spreadsheetId, sheetsConfig.apiKey)}
+                    disabled={!sheetsConfig.spreadsheetId || !sheetsConfig.apiKey || isLoading}
+                    className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200"
+                  >
+                    {isLoading ? 'Connecting...' : 'Connect to Google Sheets'}
+                  </button>
+                </div>
+              )}
 
-  // Autocomplete states
-  const [categorySearch, setCategorySearch] = useState('');
-  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [accountSearch, setAccountSearch] = useState('Kotak');
-  const [showAccountDropdown, setShowAccountDropdown] = useState(false);
-
-  const [currentView, setCurrentView] = useState('dashboard');
-  
-  // Enhanced filters
-  const [filters, setFilters] = useState({
-    search: '',
-    category: '',
-    account: '',
-    type: '',
-    month: '',
-    year: '',
-    dateFrom: '',
-    dateTo: ''
-  });
-  const [showFilters, setShowFilters] = useState(false);
-
-  // Generate filter options
-  const years = [...new Set(transactions.map(t => new Date(t.date).getFullYear()))].sort((a, b) => b - a);
-  const months = [
-    { value: '0', label: 'January' }, { value: '1', label: 'February' }, { value: '2', label: 'March' },
-    { value: '3', label: 'April' }, { value: '4', label: 'May' }, { value: '5', label: 'June' },
-    { value: '6', label: 'July' }, { value: '7', label: 'August' }, { value: '8', label: 'September' },
-    { value: '9', label: 'October' }, { value: '10', label: 'November' }, { value: '11', label: 'December' }
-  ];
-
-  // Filter categories and accounts based on search
-  const filteredCategories = masterData.categories.filter(cat =>
-    cat.combined.toLowerCase().includes(categorySearch.toLowerCase())
+              <button
+                onClick={() => setShowSyncModal(false)}
+                className="w-full mt-4 px-4 py-2 border border-gray-200 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-xl font-medium transition-all duration-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
+};
 
-  const filteredAccounts = masterData.accounts.filter(acc =>
-    acc.toLowerCase().includes(accountSearch.toLowerCase())
-  );
-
-  // Parse category to get main and sub
-  const parseCategory = (categoryString) => {
-    const parts = categoryString.split(' > ');
-    return {
-      main: parts[0] || '',
-      sub: parts[1] || parts[0] || '',
-      combined: categoryString
-    };
-  };
-
-  // Auto-determine transaction type based on category
-  const getTransactionType = (category) => {
-    const mainCategory = parseCategory(category).main;
-    return mainCategory === 'Income' ? 'Income' : 'Expense';
-  };
-
-  // Convert Google Sheets row to transaction object
-  const convertSheetRowToTransaction = (row, index) => {
-    return {
-      id: `sheet_${index}`,
-      date: row[0] ? new Date(row[0]).toISOString().split('T')[0] : '',
-      amount: parseFloat(row[1]) || 0,
-      category: row[2] || '',
-      description: row[3] || '',
-      tag: row[4] || '',
-      account: row[5] || 'Kotak',
-      type: row[8] || getTransactionType(row[2] || ''),
-      synced: true,
-      source: 'sheets'
-    };
-  };
-
-  // Google Sheets API Functions
-  const connectToGoogleSheets = async (spreadsheetId, apiKey) => {
-    setSyncStatus('syncing');
-    setIsLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      setSheetsConfig({
-        spreadsheetId,
-        apiKey,
-        isConnected: true,
-        lastSync: new Date().toISOString()
-      });
-      
-      await loadAllDataFromSheets(spreadsheetId, apiKey);
-      setSyncStatus('success');
-      setTimeout(() => setSyncStatus('idle'), 2000);
-      
-    } catch (error) {
-      setSyncStatus('error');
-      console.error('Failed to connect to Google Sheets:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadAllDataFromSheets = async (spreadsheetId, apiKey) => {
-    try {
-      // Simulated data from your actual Google Sheets
-      const simulatedSheetData = [
-        ['2025-05-31', 40000, 'Income > Income', 'Monthly Load', '', 'Kotak', 'Income', 'Income', 'Income', 24686, 5416, 'June 2025', '2025'],
-        ['2025-06-01', 3700, 'Household > House Help', 'Maid', '', 'Kotak', 'Household', 'House Help', 'Expense', 20986, 5416, 'June 2025', '2025'],
-        ['2025-06-02', 2370, 'Household > Grocery', 'Momaji Grocery', '', 'Kotak', 'Household', 'Grocery', 'Expense', 18616, 5416, 'June 2025', '2025'],
-        ['2025-06-02', 325, 'Subscriptions > Subscriptions', 'Global Machining Website', '', 'Kotak', 'Subscriptions', 'Subscriptions', 'Expense', 18291, 5416, 'June 2025', '2025'],
-        ['2025-06-03', 440, 'Entertainment > Entertainment', 'Pickleball', '', 'Kotak', 'Entertainment', 'Entertainment', 'Expense', 17851, 5416, 'June 2025', '2025'],
-        ['2025-06-03', 120, 'Food > Food', 'Kulfi', '', 'Kotak', 'Food', 'Food', 'Expense', 17731, 5416, 'June 2025', '2025'],
-        ['2025-06-04', 527, 'Fuel > Honda City', 'City CNG', '', 'Kotak', 'Fuel', 'Honda City', 'Expense', 17005, 5416, 'June 2025', '2025'],
-        ['2025-06-05', 420, 'Food > Food', 'Bhaji Pav', '', 'Kotak', 'Food', 'Food', 'Expense', 16423, 5416, 'June 2025', '2025'],
-        ['2025-06-05', 90, 'Fuel > Eon', 'Chhas', '', 'Kotak', 'Fuel', 'Eon', 'Expense', 16173, 5416, 'June 2025', '2025'],
-        ['2025-06-06', 523, 'Fuel > Honda City', 'City CNG', '', 'Kotak', 'Fuel', 'Honda City', 'Expense', 13028, 5416, 'June 2025', '2025'],
-        ['2025-06-07', 110, 'Vyomi > Vyomi', 'Vyomi', '', 'Kotak', 'Vyomi', 'Vyomi', 'Expense', 12659, 5416, 'June 2025', '2025'],
-        ['2025-06-10', 570, 'Household > Grocery', 'Mango', '', 'Kotak', 'Household', 'Grocery', 'Expense', 11755, 5416, 'June 2025', '2025'],
-        ['2025-06-12', 596, 'Fuel > Honda City', 'City CNG', '', 'Kotak', 'Fuel', 'Honda City', 'Expense', 10959, 5416, 'June 2025', '2025'],
-        ['2025-06-12', 3251, 'Transportation > Insurance', 'Eon Insurance', 'Yearly Major Expenses', 'Kotak', 'Transportation', 'Insurance', 'Expense', 7708, 5416, 'June 2025', '2025'],
-        ['2025-06-14', 1000, 'Fuel > Honda City', 'City Petrol', '', 'Kotak', 'Fuel', 'Honda City', 'Expense', 6626, 5416, 'June 2025', '2025'],
-        ['2025-06-15', 1079, 'Household > Grocery', 'Swiggy Grocery', '', 'Kotak', 'Household', 'Grocery', 'Expense', 4212, 5416, 'June 2025', '2025'],
-        ['2025-06-21', 59, 'Subscriptions > Subscriptions', 'Google Drive BB', '', 'Kotak', 'Subscriptions', 'Subscriptions', 'Expense', 3007, 5416, 'June 2025', '2025'],
-        ['2025-06-23', 510, 'Entertainment > Entertainment', 'Blinkit Board Game', '', 'Kotak', 'Entertainment', 'Entertainment', 'Expense', 1782, 5416, 'June 2025', '2025'],
-        ['2025-06-27', 2844, 'Household > Grocery', 'Dmart', '', 'Kotak', 'Household', 'Grocery', 'Expense', -1880, 5416, 'June 2025', '2025'],
-        ['2025-06-28', 550, 'Social Life > Social Life', 'Swiggy Food', '', 'Kotak', 'Social Life', 'Social Life', 'Expense', -2430, 5416, 'June 2025', '2025'],
-        ['2025-06-30', 40000, 'Income > Income', 'Monthly Load', '', 'Kotak', 'Income', 'Income', 'Income', 29590, 5416, 'July 2025', '2025'],
-        ['2025-06-30', 3700, 'Household > House Help', 'Maid', '', 'Kotak', 'Household', 'House Help', 'Expense', 25890, 5416, 'July 2025', '2025']
-      ];
-      
-      const sheetsTransactions = simulatedSheetData.map((row, index) => convertSheetRowToTransaction(row, index));
-      
-      setTransactions(sheetsTransactions);
-      setOriginalTransactions(sheetsTransactions);
-      
-      // Calculate balances from the data
-      const currentBalance = sheetsTransactions.length > 0 ? parseFloat(sheetsTransactions[0].amount) : 25890.7;
-      setBalances({
-        'Kotak': currentBalance,
-        'ICICI Credit Card': 0,
-        'HDFC Credit Card': 0
-      });
-      
-    } catch (error) {
-      console.error('Failed to load data from sheets:', error);
-    }
-  };
-
-  const syncToGoogleSheets = async (transaction, action = 'add') => {
-    if (!sheetsConfig.isConnected) return;
-    
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      if (action === 'add') {
-        console.log('Adding to sheets:', transaction);
-      } else if (action === 'update') {
-        console.log('Updating in sheets:', transaction);
-      } else if (action === 'delete') {
-        console.log('Deleting from sheets:', transaction);
-      }
-      
-      setTransactions(prev => 
-        prev.map(t => t.id === transaction.id ? { ...t, synced: true } : t)
-      );
-      
-      setSheetsConfig(prev => ({ ...prev, lastSync: new Date().toISOString() }));
-      
-    } catch (error) {
-      console.error('Failed to sync to Google Sheets:', error);
-    }
-  };
-
-  const manualSync = async () => {
-    if (!sheetsConfig.isConnected) return;
-    
-    setSyncStatus('syncing');
-    try {
-      const unsyncedTransactions = transactions.filter(t => !t.synced);
-      
-      for (const transaction of unsyncedTransactions) {
-        await syncToGoogleSheets(transaction, 'add');
-      }
-      
-      await loadAllDataFromSheets(sheetsConfig.spreadsheetId, sheetsConfig.apiKey);
-      
-      setSyncStatus('success');
-      setTimeout(() => setSyncStatus('idle'), 2000);
-      
-    } catch (error) {
-      setSyncStatus('error');
-      setTimeout(() => setSyncStatus('idle'), 2000);
-    }
-  };
-
-  // Add/Edit transaction
-  const addTransaction = async () => {
-    if (!formData.amount || !formData.category || !formData.description) {
-      alert('Please fill in all required fields');
-      return;
-    }
-
-    const categoryData = parseCategory(formData.category);
-    const transactionType = getTransactionType(formData.category);
-
-    const transactionData = {
-      id: editingTransaction ? editingTransaction.id : Date.now(),
-      date: formData.date,
-      amount: parseFloat(formData.amount),
-      category: categoryData.combined,
-      description: formData.description,
-      account: formData.account,
-      type: transactionType,
-      tag: formData.tag || '',
-      timestamp: new Date().toISOString(),
-      synced: false,
-      source: 'app'
-    };
-
-    if (editingTransaction) {
-      setTransactions(prev => 
-        prev.map(t => t.id === editingTransaction.id ? transactionData : t)
-      );
-      await syncToGoogleSheets(transactionData, 'update');
-    } else {
-      setTransactions(prev => [transactionData, ...prev]);
-      await syncToGoogleSheets(transactionData, 'add');
-    }
-
-    const amount = parseFloat(formData.amount);
-    setBalances(prev => ({
-      ...prev,
-      [formData.account]: transactionType === 'Income' 
-        ? prev[formData.account] + amount
-        : prev[formData.account] - amount
-    }));
-
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      amount: '',
-      category: '',
-      description: '',
-      account: 'Kotak',
-      tag: ''
-    });
-    setCategorySearch('');
-    setAccountSearch('Kotak');
-    setEditingTransaction(null);
-    setIsFormVisible(false);
-  };
-
-  // Delete transaction
-  const deleteTransaction = async (transaction) => {
-    if (window.confirm('Are you sure you want to delete this transaction?')) {
-      setTransactions(prev => prev.filter(t => t.id !== transaction.id));
-      
-      if (sheetsConfig.isConnected && transaction.source === 'sheets') {
-        await syncToGoogleSheets(transaction, 'delete');
-      }
-    }
-  };
-
-  // Edit transaction
-  const editTransaction = (transaction) => {
-    setEditingTransaction(transaction);
-    setFormData({
-      date: transaction.date,
-      amount: transaction.amount.toString(),
-      category: transaction.category,
-      description: transaction.description,
-      account: transaction.account,
-      tag: transaction.tag || ''
-    });
-    setCategorySearch(transaction.category);
-    setAccountSearch(transaction.account);
-    setIsFormVisible(true);
-  };
-
-  // Enhanced filtering
-  const getFilteredTransactions = () => {
-    return transactions.filter(t => {
-      const tDate = new Date(t.date);
-      
-      const matchesSearch = !filters.search || 
-        t.description.toLowerCase().includes(filters.search.toLowerCase()) ||
-        t.category.toLowerCase().includes(filters.search.toLowerCase());
-      
-      const matchesCategory = !filters.category || t.category.includes(filters.category);
-      const matchesAccount = !filters.account || t.account === filters.account;
-      const matchesType = !filters.type || t.type === filters.type;
-      const matchesMonth = !filters.month || tDate.getMonth() === parseInt(filters.month);
-      const matchesYear = !filters.year || tDate.getFullYear() === parseInt(filters.year);
-      const matchesDateFrom = !filters.dateFrom || t.date >= filters.dateFrom;
-      const matchesDateTo = !filters.dateTo || t.date <= filters.dateTo;
-      
-      return matchesSearch && matchesCategory && matchesAccount && matchesType && 
-             matchesMonth && matchesYear && matchesDateFrom && matchesDateTo;
-    });
-  };
-
-  const filteredTransactions = getFilteredTransactions();
-
-  // Calculate analytics from ALL transactions
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-
-  const currentMonthTransactions = transactions.filter(t => {
-    const tDate = new Date(t.date);
-    return tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear;
-  });
-
-  const currentMonthExpenses = currentMonthTransactions
-    .filter(t => t.type === 'Expense')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const currentMonthIncome = currentMonthTransactions
-    .filter(t => t.type === 'Income')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  // Category breakdown for charts from ALL data
-  const categoryTotals = {};
-  currentMonthTransactions.forEach(t => {
-    if (t.type === 'Expense') {
-      const mainCategory = parseCategory(t.category).main;
-      categoryTotals[mainCategory] = (categoryTotals[mainCategory] || 0) + t.amount;
-    }
-  });
-
-  const pieChartData = Object.entries(categoryTotals).map(([name, value]) => ({
-    name,
-    value,
-    color: categoryColors[name]
-  }));
-
-  const totalBalance = Object.values(balances).reduce((sum, balance) => sum + balance, 0);
-  const savingsRate = currentMonthIncome > 0 ? ((currentMonthIncome - currentMonthExpenses) / currentMonthIncome) * 100 : 0;
-
-  const topCategories = Object.entries(categoryTotals)
-    .sort(([,a], [,b]) => b - a)
-    .slice(0, 5);
-
-  // Clear all filters
-  const clearFilters = () => {
-    setFilters({
-      search: '',
-      category: '',
-      account: '',
-      type: '',
-      month: '',
-      year: '',
-      dateFrom: '',
-      dateTo: ''
-    });
-  };
-
-  // Click outside handlers
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (!event.target.closest('.category-dropdown')) {
-        setShowCategoryDropdown(false);
-      }
-      if (!event.target.closest('.account-dropdown')) {
-        setShowAccountDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  return (
-    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
-      {isLoading && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-white rounded-2xl p-8 shadow-2xl">
-            <div className="flex items-center space-x-3">
+export default ExpenseTracker;3">
               <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
               <span className="text-lg font-medium">Loading transactions from Google Sheets...</span>
             </div>
@@ -1066,7 +1315,4 @@ const ExpenseTracker = () => {
             syncStatus === 'error' ? 'bg-red-50 border-red-200 text-red-800' :
             'bg-blue-50 border-blue-200 text-blue-800'
           }`}>
-            <div className="flex items-center space-x-3">
-              {syncStatus === 'syncing' && <RefreshCw className="w-5 h-5 animate-spin" />}
-              {syncStatus === 'success' && <CheckCircle className="w-5 h-5" />}
-              {syncStatus === 'error' && <AlertTriangle className="w-5
+            <div className="flex items-center space-x-
