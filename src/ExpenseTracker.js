@@ -7,6 +7,7 @@ const ExpenseTracker = () => {
   const [sheetsConfig, setSheetsConfig] = useState({
     spreadsheetId: '',
     apiKey: '',
+    clientId: '',
     isConnected: false,
     lastSync: null
   });
@@ -139,12 +140,13 @@ const ExpenseTracker = () => {
   };
 
   // Initialize Google API
-  const initializeGoogleAPI = async (apiKey) => {
+  const initializeGoogleAPI = async (apiKey, clientId) => {
     try {
       const gapi = await loadGoogleAPI();
       
       await gapi.client.init({
         apiKey: apiKey,
+        clientId: 130621204284-j2gk44qb30mvkd4pm7soav68nphtfkok.apps.googleusercontent.com,
         discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
         scope: 'https://www.googleapis.com/auth/spreadsheets'
       });
@@ -172,7 +174,7 @@ const ExpenseTracker = () => {
 
   // Real Google Sheets API integration with authentication
   const loadDataFromGoogleSheets = async () => {
-    if (!sheetsConfig.isConnected || !sheetsConfig.spreadsheetId || !sheetsConfig.apiKey) {
+    if (!sheetsConfig.isConnected || !sheetsConfig.spreadsheetId || !sheetsConfig.apiKey || !sheetsConfig.clientId) {
       return;
     }
 
@@ -181,7 +183,7 @@ const ExpenseTracker = () => {
       setError(null);
 
       // Initialize and authenticate
-      await initializeGoogleAPI(sheetsConfig.apiKey);
+      await initializeGoogleAPI(sheetsConfig.apiKey, sheetsConfig.clientId);
       await authenticateGoogle();
 
       // Read data from sheets
@@ -352,14 +354,14 @@ const ExpenseTracker = () => {
   };
 
   // Connect to Google Sheets with proper authentication
-  const connectToGoogleSheets = async (spreadsheetId, apiKey) => {
+  const connectToGoogleSheets = async (spreadsheetId, apiKey, clientId) => {
     setSyncStatus('syncing');
     setIsLoading(true);
     setError(null);
 
     try {
       // Initialize Google API
-      await initializeGoogleAPI(apiKey);
+      await initializeGoogleAPI(apiKey, clientId);
       
       // Test connection by trying to read the spreadsheet metadata
       await window.gapi.client.sheets.spreadsheets.get({
@@ -373,6 +375,7 @@ const ExpenseTracker = () => {
       setSheetsConfig({
         spreadsheetId,
         apiKey,
+        clientId,
         isConnected: true,
         lastSync: null
       });
@@ -1606,9 +1609,21 @@ const ExpenseTracker = () => {
                     <p className="text-xs text-gray-500 mt-1">From Google Cloud Console</p>
                   </div>
                   
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">OAuth Client ID</label>
+                    <input
+                      type="text"
+                      placeholder="Enter your OAuth Client ID"
+                      value={sheetsConfig.clientId}
+                      onChange={(e) => setSheetsConfig(prev => ({ ...prev, clientId: e.target.value }))}
+                      className="w-full px-4 py-3 bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">OAuth 2.0 Client ID for authentication</p>
+                  </div>
+                  
                   <button
-                    onClick={() => connectToGoogleSheets(sheetsConfig.spreadsheetId, sheetsConfig.apiKey)}
-                    disabled={!sheetsConfig.spreadsheetId || !sheetsConfig.apiKey || isLoading}
+                    onClick={() => connectToGoogleSheets(sheetsConfig.spreadsheetId, sheetsConfig.apiKey, sheetsConfig.clientId)}
+                    disabled={!sheetsConfig.spreadsheetId || !sheetsConfig.apiKey || !sheetsConfig.clientId || isLoading}
                     className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-semibold transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoading ? (
@@ -1668,7 +1683,7 @@ const ExpenseTracker = () => {
                     
                     <button
                       onClick={() => {
-                        setSheetsConfig({ spreadsheetId: '', apiKey: '', isConnected: false, lastSync: null });
+                        setSheetsConfig({ spreadsheetId: '', apiKey: '', clientId: '', isConnected: false, lastSync: null });
                         setTransactions([]);
                         setBalances({
                           'Kotak': 25890.7,
