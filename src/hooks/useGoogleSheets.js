@@ -20,6 +20,11 @@ export const useGoogleSheets = () => {
         return;
       }
 
+      const existingScript = document.querySelector('script[src*="apis.google.com"]');
+      if (existingScript) {
+        existingScript.remove();
+      }
+
       const script = document.createElement('script');
       script.src = 'https://apis.google.com/js/api.js';
       script.async = true;
@@ -29,10 +34,11 @@ export const useGoogleSheets = () => {
         if (window.gapi && window.gapi.load) {
           window.gapi.load('client:auth2', {
             callback: () => {
+              console.log('Google API loaded successfully');
               setGapiLoaded(true);
               resolve(window.gapi);
             },
-            onerror: (error) => {
+            onerror: () => {
               reject(new Error('Failed to load Google API client'));
             }
           });
@@ -60,6 +66,7 @@ export const useGoogleSheets = () => {
         scope: 'https://www.googleapis.com/auth/spreadsheets'
       });
 
+      console.log('Google API initialized successfully');
       return gapi;
     } catch (error) {
       console.error('Failed to initialize Google API:', error);
@@ -108,56 +115,67 @@ export const useGoogleSheets = () => {
       throw error;
     } finally {
       setIsLoading(false);
+      setTimeout(() => setSyncStatus('idle'), 3000);
     }
   };
 
   const loadAccountBalances = async () => {
-    const response = await window.gapi.client.sheets.spreadsheets.values.get({
-      spreadsheetId: sheetsConfig.spreadsheetId,
-      range: sheetsConfig.ACCOUNTS_RANGE
-    });
+    try {
+      const response = await window.gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: sheetsConfig.spreadsheetId,
+        range: SHEETS_CONFIG.ACCOUNTS_RANGE
+      });
 
-    const rows = response.result.values || [];
-    const newBalances = {};
-    const accountsList = [];
+      const rows = response.result.values || [];
+      const newBalances = {};
+      const accountsList = [];
 
-    rows.slice(1).forEach(row => {
-      if (row && row.length >= 3 && row[0]) {
-        const accountName = row[0].trim();
-        const endingBalance = parseFloat(row[2]) || 0;
-        
-        newBalances[accountName] = endingBalance;
-        accountsList.push(accountName);
-      }
-    });
+      rows.slice(1).forEach(row => {
+        if (row && row.length >= 3 && row[0]) {
+          const accountName = row[0].trim();
+          const endingBalance = parseFloat(row[2]) || 0;
+          
+          newBalances[accountName] = endingBalance;
+          accountsList.push(accountName);
+        }
+      });
 
-    return { balances: newBalances, accounts: accountsList };
+      return { balances: newBalances, accounts: accountsList };
+    } catch (error) {
+      console.error('Failed to load account balances:', error);
+      return { balances: {}, accounts: [] };
+    }
   };
 
   const loadTransactions = async () => {
-    const response = await window.gapi.client.sheets.spreadsheets.values.get({
-      spreadsheetId: sheetsConfig.spreadsheetId,
-      range: sheetsConfig.TRANSACTIONS_RANGE
-    });
+    try {
+      const response = await window.gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: sheetsConfig.spreadsheetId,
+        range: SHEETS_CONFIG.TRANSACTIONS_RANGE
+      });
 
-    const rows = response.result.values || [];
-    const dataRows = rows.slice(1);
-    
-    return dataRows
-      .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
-      .map((row, index) => ({
-        id: `sheet_${index}_${Date.now()}`,
-        date: formatDateForInput(row[0]),
-        amount: parseFloat(row[1]) || 0,
-        category: row[2] || '',
-        description: row[3] || '',
-        tag: row[4] || '',
-        account: row[5] || '',
-        type: row[8] || getTransactionType(row[2] || ''),
-        synced: true,
-        source: 'sheets',
-        sheetRow: index + 2
-      }));
+      const rows = response.result.values || [];
+      const dataRows = rows.slice(1);
+      
+      return dataRows
+        .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
+        .map((row, index) => ({
+          id: `sheet_${index}_${Date.now()}`,
+          date: formatDateForInput(row[0]),
+          amount: parseFloat(row[1]) || 0,
+          category: row[2] || '',
+          description: row[3] || '',
+          tag: row[4] || '',
+          account: row[5] || '',
+          type: row[8] || getTransactionType(row[2] || ''),
+          synced: true,
+          source: 'sheets',
+          sheetRow: index + 2
+        }));
+    } catch (error) {
+      console.error('Failed to load transactions:', error);
+      return [];
+    }
   };
 
   const addTransactionToSheets = async (transaction) => {
@@ -166,7 +184,7 @@ export const useGoogleSheets = () => {
 
       const readResponse = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: sheetsConfig.spreadsheetId,
-        range: sheetsConfig.TRANSACTIONS_RANGE
+        range: SHEETS_CONFIG.TRANSACTIONS_RANGE
       });
       
       const lastRow = (readResponse.result.values?.length || 1) + 1;
@@ -198,20 +216,27 @@ export const useGoogleSheets = () => {
   };
 
   const manualSync = async () => {
-    if (sheetsConfig.isConnected) {
-      setSyncStatus('syncing');
-      try {
-        const [balanceData, transactionData] = await Promise.all([
-          loadAccountBalances(),
-          loadTransactions()
-        ]);
-        
-        setSyncStatus('success');
-        return { ...balanceData, transactions: transactionData };
-      } catch (error) {
-        setSyncStatus('error');
-        throw error;
-      }
+    if (!sheetsConfig.isConnected) return null;
+    
+    setSyncStatus('syncing');
+    try {
+      const [balanceData, transactionData] = await Promise.all([
+        loadAccountBalances(),
+        loadTransactions()
+      ]);
+      
+      setSheetsConfig(prev => ({
+        ...prev,
+        lastSync: new Date().toISOString()
+      }));
+      
+      setSyncStatus('success');
+      return { ...balanceData, transactions: transactionData };
+    } catch (error) {
+      setSyncStatus('error');
+      throw error;
+    } finally {
+      setTimeout(() => setSyncStatus('idle'), 3000);
     }
   };
 
