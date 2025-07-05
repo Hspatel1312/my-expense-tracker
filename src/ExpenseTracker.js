@@ -502,7 +502,7 @@ const ExpenseTracker = () => {
     }
   };
 
-  // Load Google API on component mount
+// Load Google API on component mount
   useEffect(() => {
     console.log('Component mounted, loading Google API...');
     loadGoogleAPI().catch(error => {
@@ -755,7 +755,7 @@ const ExpenseTracker = () => {
                 </div>
               </div>
             </div>
-  {/* Account Balances & Top Categories */}
+{/* Account Balances & Top Categories */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Account Balances */}
               <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg p-8 border border-white/50">
@@ -1578,3 +1578,4 @@ const ExpenseTracker = () => {
 };
 
 export default ExpenseTracker;
+  
