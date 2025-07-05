@@ -3,11 +3,10 @@ import { PlusCircle, BarChart3, CreditCard, TrendingUp, Search, DollarSign, Arro
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const ExpenseTracker = () => {
-  // Google Sheets Configuration
+  // Google Sheets Configuration (removed clientId since it's hardcoded)
   const [sheetsConfig, setSheetsConfig] = useState({
     spreadsheetId: '',
     apiKey: '',
-    clientId: '',
     isConnected: false,
     lastSync: null
   });
@@ -140,13 +139,16 @@ const ExpenseTracker = () => {
   };
 
   // Initialize Google API
-  const initializeGoogleAPI = async (apiKey, clientId) => {
+  const initializeGoogleAPI = async (apiKey) => {
     try {
       const gapi = await loadGoogleAPI();
       
+      // Hardcoded OAuth Client ID - replace with your actual Client ID
+      const OAUTH_CLIENT_ID = "130621204284-j2gk44qb30mvkd4pm7soav68nphtfkok.apps.googleusercontent.com"; // Replace this with your actual OAuth Client ID
+      
       await gapi.client.init({
         apiKey: apiKey,
-        clientId: 130621204284-j2gk44qb30mvkd4pm7soav68nphtfkok.apps.googleusercontent.com,
+        clientId: OAUTH_CLIENT_ID,
         discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
         scope: 'https://www.googleapis.com/auth/spreadsheets'
       });
@@ -174,7 +176,7 @@ const ExpenseTracker = () => {
 
   // Real Google Sheets API integration with authentication
   const loadDataFromGoogleSheets = async () => {
-    if (!sheetsConfig.isConnected || !sheetsConfig.spreadsheetId || !sheetsConfig.apiKey || !sheetsConfig.clientId) {
+    if (!sheetsConfig.isConnected || !sheetsConfig.spreadsheetId || !sheetsConfig.apiKey) {
       return;
     }
 
@@ -182,8 +184,8 @@ const ExpenseTracker = () => {
       setSyncStatus('syncing');
       setError(null);
 
-      // Initialize and authenticate
-      await initializeGoogleAPI(sheetsConfig.apiKey, sheetsConfig.clientId);
+      // Initialize and authenticate (clientId is now hardcoded)
+      await initializeGoogleAPI(sheetsConfig.apiKey);
       await authenticateGoogle();
 
       // Read data from sheets
@@ -354,14 +356,14 @@ const ExpenseTracker = () => {
   };
 
   // Connect to Google Sheets with proper authentication
-  const connectToGoogleSheets = async (spreadsheetId, apiKey, clientId) => {
+  const connectToGoogleSheets = async (spreadsheetId, apiKey) => {
     setSyncStatus('syncing');
     setIsLoading(true);
     setError(null);
 
     try {
-      // Initialize Google API
-      await initializeGoogleAPI(apiKey, clientId);
+      // Initialize Google API (clientId is now hardcoded)
+      await initializeGoogleAPI(apiKey);
       
       // Test connection by trying to read the spreadsheet metadata
       await window.gapi.client.sheets.spreadsheets.get({
@@ -375,7 +377,6 @@ const ExpenseTracker = () => {
       setSheetsConfig({
         spreadsheetId,
         apiKey,
-        clientId,
         isConnected: true,
         lastSync: null
       });
@@ -1609,21 +1610,9 @@ const ExpenseTracker = () => {
                     <p className="text-xs text-gray-500 mt-1">From Google Cloud Console</p>
                   </div>
                   
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">OAuth Client ID</label>
-                    <input
-                      type="text"
-                      placeholder="Enter your OAuth Client ID"
-                      value={sheetsConfig.clientId}
-                      onChange={(e) => setSheetsConfig(prev => ({ ...prev, clientId: e.target.value }))}
-                      className="w-full px-4 py-3 bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">OAuth 2.0 Client ID for authentication</p>
-                  </div>
-                  
                   <button
-                    onClick={() => connectToGoogleSheets(sheetsConfig.spreadsheetId, sheetsConfig.apiKey, sheetsConfig.clientId)}
-                    disabled={!sheetsConfig.spreadsheetId || !sheetsConfig.apiKey || !sheetsConfig.clientId || isLoading}
+                    onClick={() => connectToGoogleSheets(sheetsConfig.spreadsheetId, sheetsConfig.apiKey)}
+                    disabled={!sheetsConfig.spreadsheetId || !sheetsConfig.apiKey || isLoading}
                     className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-semibold transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoading ? (
@@ -1642,7 +1631,8 @@ const ExpenseTracker = () => {
                     </p>
                     <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
                       <li>Create a Google Cloud project and enable Sheets API</li>
-                      <li>Create credentials (API Key + OAuth 2.0)</li>
+                      <li>Create OAuth 2.0 credentials in Google Cloud Console</li>
+                      <li>Replace the hardcoded Client ID in the app code</li>
                       <li>Make your Google Sheet publicly readable OR share with your email</li>
                       <li>You'll be prompted to sign in to Google when connecting</li>
                     </ol>
@@ -1683,7 +1673,7 @@ const ExpenseTracker = () => {
                     
                     <button
                       onClick={() => {
-                        setSheetsConfig({ spreadsheetId: '', apiKey: '', clientId: '', isConnected: false, lastSync: null });
+                        setSheetsConfig({ spreadsheetId: '', apiKey: '', isConnected: false, lastSync: null });
                         setTransactions([]);
                         setBalances({
                           'Kotak': 25890.7,
