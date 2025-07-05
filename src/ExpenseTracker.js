@@ -49,7 +49,7 @@ const ExpenseTracker = () => {
     accounts: ['Kotak', 'ICICI Credit Card', 'HDFC Credit Card']
   });
 
-  const categoryColors = {
+  const categoryColors = useMemo(() => ({
     'Food': '#FF6B6B',
     'Social Life': '#4ECDC4',
     'Entertainment': '#45B7D1',
@@ -66,7 +66,7 @@ const ExpenseTracker = () => {
     'Subscriptions': '#9CCC65',
     'Misc': '#8D6E63',
     'Income': '#66BB6A'
-  };
+  }), []);
 
   // State management
   const [transactions, setTransactions] = useState([]);
@@ -600,7 +600,7 @@ const ExpenseTracker = () => {
       value,
       color: categoryColors[name]
     })),
-    [categoryTotals]
+    [categoryTotals, categoryColors]
   );
 
   const totalBalance = Object.values(balances).reduce((sum, balance) => sum + balance, 0);
@@ -649,7 +649,7 @@ const ExpenseTracker = () => {
     if (sheetsConfig.isConnected) {
       loadDataFromGoogleSheets();
     }
-  }, [sheetsConfig.isConnected]);
+  }, [sheetsConfig.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
