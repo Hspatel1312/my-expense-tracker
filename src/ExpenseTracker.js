@@ -6,7 +6,7 @@ const ExpenseTracker = () => {
   // Google Sheets Configuration - HARDCODED
   const [sheetsConfig, setSheetsConfig] = useState({
     spreadsheetId: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
-    apiKey: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
+    apiKey: 'AIzaSyCxpGczSKU6rtC56mPA1W7I8QuG3Z-gUeo',
     clientId: '130621204284-j2gk44qb30mvkd4pm7soav68nphtfkok.apps.googleusercontent.com',
     isConnected: false,
     lastSync: null
