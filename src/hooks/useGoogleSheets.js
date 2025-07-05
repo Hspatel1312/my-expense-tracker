@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { SHEETS_CONFIG } from '../constants/config';
 import { formatDateForInput, getTransactionType } from '../utils/helpers';
 
@@ -87,7 +87,7 @@ export const useGoogleSheets = () => {
     }
   };
 
-  const connectToGoogleSheets = async () => {
+  const connectToGoogleSheets = useCallback(async () => {
     setSyncStatus('syncing');
     setIsLoading(true);
 
@@ -117,7 +117,7 @@ export const useGoogleSheets = () => {
       setIsLoading(false);
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-  };
+  }, [sheetsConfig.spreadsheetId, sheetsConfig.apiKey, sheetsConfig.clientId]);
 
   const loadAccountBalances = async () => {
     try {
@@ -250,7 +250,7 @@ export const useGoogleSheets = () => {
         connectToGoogleSheets().catch(console.error);
       }, 1000);
     }
-  }, [gapiLoaded, sheetsConfig.isConnected]);
+  }, [gapiLoaded, sheetsConfig.isConnected, connectToGoogleSheets]);
 
   return {
     sheetsConfig,
