@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { PlusCircle, BarChart3, CreditCard, PieChart, Activity, AlertTriangle, X, RefreshCw, CheckCircle, Cloud, Sparkles, DollarSign, TrendingUp, ArrowUpDown, Target, Star, Award, Wallet, Search, Edit, Trash2, Filter } from 'lucide-react';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
@@ -34,22 +34,27 @@ const App = () => {
   );
 
   // Sync data when Google Sheets connects
-  useEffect(() => {
+  const syncData = useCallback(async () => {
     if (googleSheets.sheetsConfig.isConnected) {
-      googleSheets.manualSync()
-        .then(data => {
-          if (data) {
-            expenseTracker.setBalances(data.balances);
-            expenseTracker.setMasterData(prev => ({ 
-              ...prev, 
-              accounts: data.accounts 
-            }));
-            expenseTracker.setTransactions(data.transactions);
-          }
-        })
-        .catch(console.error);
+      try {
+        const data = await googleSheets.manualSync();
+        if (data) {
+          expenseTracker.setBalances(data.balances);
+          expenseTracker.setMasterData(prev => ({ 
+            ...prev, 
+            accounts: data.accounts 
+          }));
+          expenseTracker.setTransactions(data.transactions);
+        }
+      } catch (error) {
+        console.error('Sync failed:', error);
+      }
     }
-  }, [googleSheets.sheetsConfig.isConnected]);
+  }, [googleSheets.sheetsConfig.isConnected, googleSheets.manualSync, expenseTracker.setBalances, expenseTracker.setMasterData, expenseTracker.setTransactions]);
+
+  useEffect(() => {
+    syncData();
+  }, [syncData]);
 
   // Handle form submission
   const handleAddTransaction = async () => {
