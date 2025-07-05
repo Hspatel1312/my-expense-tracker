@@ -6,7 +6,7 @@ const ExpenseTracker = () => {
   // Google Sheets Configuration - HARDCODED
   const [sheetsConfig, setSheetsConfig] = useState({
     spreadsheetId: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
-    apiKey: 'AIzaSyCxpGczSKU6rtC56mPA1W7I8QuG3Z-gUeo',
+    apiKey: 'AIzaSyCxpGczSKU6rtG36mPAlU7I8QuG3Z-gMeo',
     clientId: '130621204284-j2gk44qb30mvkd4pm7soav68nphtfkok.apps.googleusercontent.com',
     isConnected: false,
     lastSync: null
@@ -15,6 +15,7 @@ const ExpenseTracker = () => {
   const [syncStatus, setSyncStatus] = useState('idle');
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [gapiLoaded, setGapiLoaded] = useState(false);
 
   // Master data for categories and accounts - accounts will be dynamic from sheets
   const [masterData, setMasterData] = useState({
@@ -116,38 +117,80 @@ const ExpenseTracker = () => {
   const TRANSACTIONS_RANGE = 'Transactions!A:I';
   const ACCOUNTS_RANGE = 'Data!E:G'; // E=Account, F=Starting Balance, G=Ending Balance
 
-  // Load the Google APIs library
+  // Enhanced Google API loading with proper error handling
   const loadGoogleAPI = () => {
     return new Promise((resolve, reject) => {
-      if (window.gapi) {
+      console.log('Loading Google API...');
+      
+      // Check if gapi is already loaded
+      if (window.gapi && window.gapi.load) {
+        console.log('Google API already loaded');
         resolve(window.gapi);
         return;
       }
 
+      // Remove any existing script
+      const existingScript = document.querySelector('script[src*="apis.google.com"]');
+      if (existingScript) {
+        existingScript.remove();
+      }
+
       const script = document.createElement('script');
       script.src = 'https://apis.google.com/js/api.js';
+      script.async = true;
+      script.defer = true;
+      
       script.onload = () => {
-        window.gapi.load('client:auth2', () => {
-          resolve(window.gapi);
-        });
+        console.log('Google API script loaded');
+        if (window.gapi && window.gapi.load) {
+          window.gapi.load('client:auth2', {
+            callback: () => {
+              console.log('Google API client and auth2 loaded');
+              setGapiLoaded(true);
+              resolve(window.gapi);
+            },
+            onerror: (error) => {
+              console.error('Error loading Google API client/auth2:', error);
+              reject(new Error('Failed to load Google API client'));
+            }
+          });
+        } else {
+          reject(new Error('Google API not available'));
+        }
       };
-      script.onerror = reject;
+      
+      script.onerror = (error) => {
+        console.error('Error loading Google API script:', error);
+        reject(new Error('Failed to load Google API script'));
+      };
+
       document.head.appendChild(script);
     });
   };
 
-  // Initialize Google API
+  // Initialize Google API with better error handling
   const initializeGoogleAPI = async () => {
     try {
+      console.log('Initializing Google API...');
       const gapi = await loadGoogleAPI();
       
+      if (!gapi || !gapi.client) {
+        throw new Error('Google API client not available');
+      }
+
+      console.log('Initializing client with:', {
+        apiKey: sheetsConfig.apiKey.substring(0, 10) + '...',
+        clientId: sheetsConfig.clientId.substring(0, 20) + '...'
+      });
+
       await gapi.client.init({
         apiKey: sheetsConfig.apiKey,
         clientId: sheetsConfig.clientId,
         discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
-        scope: 'https://www.googleapis.com/auth/spreadsheets'
+        scope: 'https://www.googleapis.com/auth/spreadsheets.readonly'
       });
 
+      console.log('Google API initialized successfully');
       return gapi;
     } catch (error) {
       console.error('Failed to initialize Google API:', error);
@@ -155,29 +198,53 @@ const ExpenseTracker = () => {
     }
   };
 
-  // Authenticate with Google
+  // Authenticate with Google with better error handling
   const authenticateGoogle = async () => {
     try {
-      const authInstance = window.gapi.auth2.getAuthInstance();
-      if (!authInstance.isSignedIn.get()) {
-        await authInstance.signIn();
+      console.log('Authenticating with Google...');
+      
+      if (!window.gapi || !window.gapi.auth2) {
+        throw new Error('Google Auth2 not loaded');
       }
+
+      const authInstance = window.gapi.auth2.getAuthInstance();
+      if (!authInstance) {
+        throw new Error('Google Auth instance not available');
+      }
+
+      if (!authInstance.isSignedIn.get()) {
+        console.log('User not signed in, showing sign-in popup...');
+        const user = await authInstance.signIn();
+        console.log('User signed in:', user.getBasicProfile().getEmail());
+      } else {
+        console.log('User already signed in');
+      }
+      
       return true;
     } catch (error) {
       console.error('Authentication failed:', error);
-      throw new Error('Google authentication failed. Please try again.');
+      if (error.error === 'popup_blocked_by_browser') {
+        throw new Error('Popup blocked by browser. Please allow popups for this site and try again.');
+      } else if (error.error === 'access_denied') {
+        throw new Error('Access denied. Please grant permission to access your Google Sheets.');
+      } else {
+        throw new Error(`Google authentication failed: ${error.message || error.error || 'Unknown error'}`);
+      }
     }
   };
 
   // Load account balances from Google Sheets Data tab
   const loadAccountBalances = async () => {
     try {
+      console.log('Loading account balances...');
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: sheetsConfig.spreadsheetId,
         range: ACCOUNTS_RANGE
       });
 
       const rows = response.result.values || [];
+      console.log('Account data rows:', rows);
+      
       const newBalances = {};
       const accountsList = [];
 
@@ -191,6 +258,9 @@ const ExpenseTracker = () => {
           accountsList.push(accountName);
         }
       });
+
+      console.log('Loaded balances:', newBalances);
+      console.log('Loaded accounts:', accountsList);
 
       setBalances(newBalances);
       setMasterData(prev => ({ ...prev, accounts: accountsList }));
@@ -213,6 +283,7 @@ const ExpenseTracker = () => {
     try {
       setSyncStatus('syncing');
       setError(null);
+      console.log('Starting data load from Google Sheets...');
 
       // Initialize and authenticate
       await initializeGoogleAPI();
@@ -222,12 +293,14 @@ const ExpenseTracker = () => {
       await loadAccountBalances();
 
       // Load transactions
+      console.log('Loading transactions...');
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: sheetsConfig.spreadsheetId,
         range: TRANSACTIONS_RANGE
       });
 
       const rows = response.result.values || [];
+      console.log('Transaction data rows:', rows.length);
       
       // Skip header row if exists
       const dataRows = rows.slice(1);
@@ -248,21 +321,27 @@ const ExpenseTracker = () => {
           sheetRow: index + 2
         }));
 
+      console.log('Loaded transactions:', sheetsTransactions.length);
       setTransactions(sheetsTransactions);
       setSheetsConfig(prev => ({ ...prev, lastSync: new Date().toISOString() }));
       setSyncStatus('success');
 
     } catch (error) {
       console.error('Failed to load data from Google Sheets:', error);
+      
+      let errorMessage = 'Failed to sync with Google Sheets';
+      
       if (error.status === 401) {
-        setError('Authentication failed. Please check your credentials and try again.');
+        errorMessage = 'Authentication failed. Please check your credentials and try again.';
       } else if (error.status === 403) {
-        setError('Access denied. Please check your spreadsheet permissions and API key.');
+        errorMessage = 'Access denied. Please check your spreadsheet permissions and API key.';
       } else if (error.status === 404) {
-        setError('Spreadsheet not found. Please check the Spreadsheet ID.');
-      } else {
-        setError(`Failed to sync with Google Sheets: ${error.message}`);
+        errorMessage = 'Spreadsheet not found. Please check the Spreadsheet ID.';
+      } else if (error.message) {
+        errorMessage = error.message;
       }
+      
+      setError(errorMessage);
       setSyncStatus('error');
     } finally {
       setTimeout(() => setSyncStatus('idle'), 3000);
@@ -367,17 +446,20 @@ const ExpenseTracker = () => {
     }
   };
 
-  // Connect to Google Sheets - simplified since everything is hardcoded
+  // Connect to Google Sheets - enhanced with better error handling
   const connectToGoogleSheets = async () => {
     setSyncStatus('syncing');
     setIsLoading(true);
     setError(null);
 
     try {
+      console.log('Starting connection to Google Sheets...');
+      
       // Initialize Google API
       await initializeGoogleAPI();
       
       // Test connection by trying to read the spreadsheet metadata
+      console.log('Testing spreadsheet access...');
       await window.gapi.client.sheets.spreadsheets.get({
         spreadsheetId: sheetsConfig.spreadsheetId
       });
@@ -392,316 +474,53 @@ const ExpenseTracker = () => {
         lastSync: null
       }));
       
+      console.log('Connection successful, loading data...');
       // Load existing data
       await loadDataFromGoogleSheets();
       
     } catch (error) {
       console.error('Connection failed:', error);
+      
+      let errorMessage = 'Connection failed';
+      
       if (error.status === 404) {
-        setError('Spreadsheet not found. Please check the Spreadsheet ID.');
+        errorMessage = 'Spreadsheet not found. Please check the Spreadsheet ID.';
       } else if (error.status === 401) {
-        setError('Invalid API key or Client ID.');
+        errorMessage = 'Invalid API key or authentication failed.';
       } else if (error.status === 403) {
-        setError('Access denied. Please check spreadsheet permissions.');
-      } else {
-        setError(`Connection failed: ${error.message}`);
+        errorMessage = 'Access denied. Please check spreadsheet permissions.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      } else if (error.error) {
+        errorMessage = error.error;
       }
+      
+      setError(errorMessage);
       setSyncStatus('error');
     } finally {
       setIsLoading(false);
     }
   };
-  // Utility functions
-  const formatDateForInput = (dateString) => {
-    try {
-      const date = new Date(dateString);
-      return date.toISOString().split('T')[0];
-    } catch {
-      return new Date().toISOString().split('T')[0];
-    }
-  };
 
-  const parseCategory = (categoryString) => {
-    const parts = categoryString.split(' > ');
-    return {
-      main: parts[0] || '',
-      sub: parts[1] || parts[0] || '',
-      combined: categoryString
-    };
-  };
-
-  const getTransactionType = (category) => {
-    const mainCategory = parseCategory(category).main;
-    return mainCategory === 'Income' ? 'Income' : 'Expense';
-  };
-
-  // Form validation
-  const validateForm = () => {
-    const errors = {};
-    
-    if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      errors.amount = 'Amount must be greater than 0';
-    }
-    
-    if (!formData.category.trim()) {
-      errors.category = 'Category is required';
-    }
-    
-    if (!formData.description.trim()) {
-      errors.description = 'Description is required';
-    }
-    
-    if (!formData.date) {
-      errors.date = 'Date is required';
-    }
-
-    if (!formData.account.trim()) {
-      errors.account = 'Account is required';
-    }
-
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  // Add/Edit transaction
-  const addTransaction = async () => {
-    if (!validateForm()) {
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const categoryData = parseCategory(formData.category);
-      const transactionType = getTransactionType(formData.category);
-
-      const transactionData = {
-        id: editingTransaction ? editingTransaction.id : `local_${Date.now()}`,
-        date: formData.date,
-        amount: parseFloat(formData.amount),
-        category: categoryData.combined,
-        description: formData.description,
-        account: formData.account,
-        type: transactionType,
-        tag: formData.tag || '',
-        timestamp: new Date().toISOString(),
-        synced: false,
-        source: 'app',
-        sheetRow: editingTransaction?.sheetRow || null
-      };
-
-      if (editingTransaction) {
-        const success = await updateTransactionInSheets(transactionData);
-        if (success || !sheetsConfig.isConnected) {
-          setTransactions(prev => 
-            prev.map(t => t.id === editingTransaction.id ? { ...transactionData, synced: success } : t)
-          );
-        }
-      } else {
-        const success = await addTransactionToSheets(transactionData);
-        setTransactions(prev => [{ ...transactionData, synced: success }, ...prev]);
-      }
-
-      // Reset form
-      setFormData({
-        date: new Date().toISOString().split('T')[0],
-        amount: '',
-        category: '',
-        description: '',
-        account: masterData.accounts[0] || '',
-        tag: ''
-      });
-      setCategorySearch('');
-      setAccountSearch(masterData.accounts[0] || '');
-      setEditingTransaction(null);
-      setIsFormVisible(false);
-      setValidationErrors({});
-
-    } catch (error) {
-      setError(`Failed to save transaction: ${error.message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Delete transaction
-  const deleteTransaction = async (transaction) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) {
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      if (transaction.source === 'sheets') {
-        const success = await deleteTransactionFromSheets(transaction);
-        if (!success && sheetsConfig.isConnected) {
-          throw new Error('Failed to delete from Google Sheets');
-        }
-      }
-
-      setTransactions(prev => prev.filter(t => t.id !== transaction.id));
-
-    } catch (error) {
-      setError(`Failed to delete transaction: ${error.message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Edit transaction
-  const editTransaction = (transaction) => {
-    setEditingTransaction(transaction);
-    setFormData({
-      date: transaction.date,
-      amount: transaction.amount.toString(),
-      category: transaction.category,
-      description: transaction.description,
-      account: transaction.account,
-      tag: transaction.tag || ''
-    });
-    setCategorySearch(transaction.category);
-    setAccountSearch(transaction.account);
-    setIsFormVisible(true);
-  };
-
-  // Filter categories and accounts based on search
-  const filteredCategories = masterData.categories.filter(cat =>
-    cat.combined.toLowerCase().includes(categorySearch.toLowerCase())
-  );
-
-  const filteredAccounts = masterData.accounts.filter(acc =>
-    acc.toLowerCase().includes(accountSearch.toLowerCase())
-  );
-
-  // Enhanced filtering
-  const getFilteredTransactions = () => {
-    return transactions.filter(t => {
-      const tDate = new Date(t.date);
-      
-      const matchesSearch = !filters.search || 
-        t.description.toLowerCase().includes(filters.search.toLowerCase()) ||
-        t.category.toLowerCase().includes(filters.search.toLowerCase());
-      
-      const matchesCategory = !filters.category || t.category.includes(filters.category);
-      const matchesAccount = !filters.account || t.account === filters.account;
-      const matchesType = !filters.type || t.type === filters.type;
-      const matchesMonth = !filters.month || tDate.getMonth() === parseInt(filters.month);
-      const matchesYear = !filters.year || tDate.getFullYear() === parseInt(filters.year);
-      const matchesDateFrom = !filters.dateFrom || t.date >= filters.dateFrom;
-      const matchesDateTo = !filters.dateTo || t.date <= filters.dateTo;
-      
-      return matchesSearch && matchesCategory && matchesAccount && matchesType && 
-             matchesMonth && matchesYear && matchesDateFrom && matchesDateTo;
-    });
-  };
-
-  const filteredTransactions = getFilteredTransactions();
-
-  // Generate filter options
-  const years = [...new Set(transactions.map(t => new Date(t.date).getFullYear()))].sort((a, b) => b - a);
-  const months = [
-    { value: '0', label: 'January' }, { value: '1', label: 'February' }, { value: '2', label: 'March' },
-    { value: '3', label: 'April' }, { value: '4', label: 'May' }, { value: '5', label: 'June' },
-    { value: '6', label: 'July' }, { value: '7', label: 'August' }, { value: '8', label: 'September' },
-    { value: '9', label: 'October' }, { value: '10', label: 'November' }, { value: '11', label: 'December' }
-  ];
-
-  // Calculate analytics
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-
-  const currentMonthTransactions = useMemo(() => 
-    transactions.filter(t => {
-      const tDate = new Date(t.date);
-      return tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear;
-    }), [transactions, currentMonth, currentYear]
-  );
-
-  const currentMonthExpenses = useMemo(() => 
-    currentMonthTransactions
-      .filter(t => t.type === 'Expense')
-      .reduce((sum, t) => sum + t.amount, 0),
-    [currentMonthTransactions]
-  );
-
-  const currentMonthIncome = useMemo(() => 
-    currentMonthTransactions
-      .filter(t => t.type === 'Income')
-      .reduce((sum, t) => sum + t.amount, 0),
-    [currentMonthTransactions]
-  );
-
-  // Category breakdown for charts
-  const categoryTotals = useMemo(() => {
-    const totals = {};
-    currentMonthTransactions.forEach(t => {
-      if (t.type === 'Expense') {
-        const mainCategory = parseCategory(t.category).main;
-        totals[mainCategory] = (totals[mainCategory] || 0) + t.amount;
-      }
-    });
-    return totals;
-  }, [currentMonthTransactions]);
-
-  const pieChartData = useMemo(() => 
-    Object.entries(categoryTotals).map(([name, value]) => ({
-      name,
-      value,
-      color: categoryColors[name]
-    })),
-    [categoryTotals, categoryColors]
-  );
-
-  const totalBalance = Object.values(balances).reduce((sum, balance) => sum + balance, 0);
-  const savingsRate = currentMonthIncome > 0 ? ((currentMonthIncome - currentMonthExpenses) / currentMonthIncome) * 100 : 0;
-
-  const topCategories = Object.entries(categoryTotals)
-    .sort(([,a], [,b]) => b - a)
-    .slice(0, 5);
-
-  // Clear all filters
-  const clearFilters = () => {
-    setFilters({
-      search: '',
-      category: '',
-      account: '',
-      type: '',
-      month: '',
-      year: '',
-      dateFrom: '',
-      dateTo: ''
-    });
-  };
-
-  // Manual sync function
-  const manualSync = async () => {
-    await loadDataFromGoogleSheets();
-  };
-
-  // Click outside handlers
+  // Load Google API on component mount
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (!event.target.closest('.category-dropdown')) {
-        setShowCategoryDropdown(false);
-      }
-      if (!event.target.closest('.account-dropdown')) {
-        setShowAccountDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    console.log('Component mounted, loading Google API...');
+    loadGoogleAPI().catch(error => {
+      console.error('Failed to load Google API on mount:', error);
+      setError('Failed to load Google API. Please refresh the page.');
+    });
   }, []);
 
-  // Auto-connect to Google Sheets when component mounts
+  // Auto-connect to Google Sheets when GAPI is loaded
   useEffect(() => {
-    // Auto-connect on first load
-    if (!sheetsConfig.isConnected) {
-      connectToGoogleSheets();
+    if (gapiLoaded && !sheetsConfig.isConnected) {
+      console.log('GAPI loaded, attempting auto-connect...');
+      // Small delay to ensure everything is ready
+      setTimeout(() => {
+        connectToGoogleSheets();
+      }, 1000);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gapiLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
@@ -749,7 +568,10 @@ const ExpenseTracker = () => {
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">Expense Tracker</h1>
                 <p className="text-gray-600 font-medium">
-                  {transactions.length} transactions • {sheetsConfig.isConnected ? 'Synced with Google Sheets' : 'Connecting...'}
+                  {transactions.length} transactions • {
+                    sheetsConfig.isConnected ? 'Synced with Google Sheets' : 
+                    gapiLoaded ? 'Connecting...' : 'Loading Google API...'
+                  }
                 </p>
               </div>
             </div>
@@ -827,6 +649,18 @@ const ExpenseTracker = () => {
       </div>
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Debug Info - Remove after testing */}
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+          <h4 className="font-semibold text-yellow-800 mb-2">Debug Info:</h4>
+          <div className="text-sm text-yellow-700 space-y-1">
+            <div>GAPI Loaded: {gapiLoaded ? '✅' : '❌'}</div>
+            <div>Sheets Connected: {sheetsConfig.isConnected ? '✅' : '❌'}</div>
+            <div>Sync Status: {syncStatus}</div>
+            <div>Accounts: {masterData.accounts.length}</div>
+            <div>Transactions: {transactions.length}</div>
+          </div>
+        </div>
+
         {/* Sync Status Banner */}
         {syncStatus !== 'idle' && (
           <div className={`mb-6 p-4 rounded-xl border ${
@@ -921,8 +755,7 @@ const ExpenseTracker = () => {
                 </div>
               </div>
             </div>
-
-            {/* Account Balances & Top Categories */}
+  {/* Account Balances & Top Categories */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Account Balances */}
               <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg p-8 border border-white/50">
@@ -938,7 +771,17 @@ const ExpenseTracker = () => {
                 <div className="space-y-4">
                   {Object.entries(balances).length === 0 ? (
                     <div className="text-center py-8">
-                      <p className="text-gray-500">No accounts found. Connect to Google Sheets to load account balances.</p>
+                      <p className="text-gray-500">
+                        {gapiLoaded ? 'No accounts found. Connect to Google Sheets to load account balances.' : 'Loading Google API...'}
+                      </p>
+                      {!gapiLoaded && (
+                        <button 
+                          onClick={() => window.location.reload()} 
+                          className="mt-2 text-blue-600 hover:text-blue-800"
+                        >
+                          Refresh Page
+                        </button>
+                      )}
                     </div>
                   ) : (
                     Object.entries(balances).map(([account, balance]) => (
@@ -1567,7 +1410,7 @@ const ExpenseTracker = () => {
         </div>
       </div>
 
-      {/* Simplified Google Sheets Modal - Auto-Connect */}
+      {/* Enhanced Google Sheets Modal with Debug Info */}
       <div className={`fixed inset-0 z-50 transition-all duration-300 ${showSyncModal ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
         <div className="absolute inset-0 bg-black/40 backdrop-blur-md" onClick={() => setShowSyncModal(false)}></div>
         <div className="flex items-center justify-center min-h-screen p-4">
@@ -1580,7 +1423,7 @@ const ExpenseTracker = () => {
                   </div>
                   <div>
                     <h2 className="text-xl font-bold text-gray-900">Google Sheets Sync</h2>
-                    <p className="text-gray-500">Automatic connection</p>
+                    <p className="text-gray-500">Debug connection status</p>
                   </div>
                 </div>
                 <button
@@ -1591,33 +1434,77 @@ const ExpenseTracker = () => {
                 </button>
               </div>
               
+              {/* Debug Information */}
+              <div className="mb-6 p-4 bg-gray-50 rounded-xl">
+                <h4 className="font-semibold text-gray-700 mb-2">Debug Status:</h4>
+                <div className="text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span>Google API Loaded:</span>
+                    <span className={gapiLoaded ? 'text-green-600' : 'text-red-600'}>
+                      {gapiLoaded ? '✅ Yes' : '❌ No'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Sheets Connected:</span>
+                    <span className={sheetsConfig.isConnected ? 'text-green-600' : 'text-red-600'}>
+                      {sheetsConfig.isConnected ? '✅ Yes' : '❌ No'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Sync Status:</span>
+                    <span className={syncStatus === 'success' ? 'text-green-600' : syncStatus === 'error' ? 'text-red-600' : 'text-blue-600'}>
+                      {syncStatus}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Accounts Found:</span>
+                    <span>{masterData.accounts.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Transactions:</span>
+                    <span>{transactions.length}</span>
+                  </div>
+                </div>
+              </div>
+
               {!sheetsConfig.isConnected ? (
                 <div className="space-y-4">
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
                     <p className="text-sm text-blue-800 mb-3">
-                      <strong>Ready to Connect!</strong>
+                      <strong>Configuration:</strong>
                     </p>
-                    <ul className="text-sm text-blue-700 space-y-1">
-                      <li>• Spreadsheet ID: 1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg</li>
-                      <li>• API Key: Configured</li>
-                      <li>• OAuth Client ID: Configured</li>
-                    </ul>
+                    <div className="text-sm text-blue-700 space-y-1">
+                      <div>• Spreadsheet ID: {sheetsConfig.spreadsheetId.substring(0, 20)}...</div>
+                      <div>• API Key: {sheetsConfig.apiKey.substring(0, 10)}...</div>
+                      <div>• Client ID: {sheetsConfig.clientId.substring(0, 20)}...</div>
+                    </div>
                   </div>
                   
                   <button
                     onClick={connectToGoogleSheets}
-                    disabled={isLoading}
+                    disabled={isLoading || !gapiLoaded}
                     className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-semibold transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoading ? (
                       <div className="flex items-center justify-center space-x-2">
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Connecting & Loading...</span>
+                        <span>Connecting...</span>
                       </div>
+                    ) : !gapiLoaded ? (
+                      'Loading Google API...'
                     ) : (
                       'Connect to Google Sheets'
                     )}
                   </button>
+                  
+                  {!gapiLoaded && (
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="w-full px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all duration-200"
+                    >
+                      Refresh Page
+                    </button>
+                  )}
                   
                   <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
                     <p className="text-sm text-amber-800 mb-2">
@@ -1665,7 +1552,7 @@ const ExpenseTracker = () => {
                       onClick={() => {
                         setSheetsConfig({ 
                           spreadsheetId: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
-                          apiKey: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
+                          apiKey: 'AIzaSyCxpGczSKU6rtG36mPAlU7I8QuG3Z-gMeo',
                           clientId: '130621204284-j2gk44qb30mvkd4pm7soav68nphtfkok.apps.googleusercontent.com',
                           isConnected: false, 
                           lastSync: null 
@@ -1673,6 +1560,7 @@ const ExpenseTracker = () => {
                         setTransactions([]);
                         setBalances({});
                         setMasterData(prev => ({ ...prev, accounts: [] }));
+                        setGapiLoaded(false);
                       }}
                       className="px-4 py-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all duration-200"
                     >
