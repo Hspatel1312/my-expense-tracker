@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { masterCategories, categoryColors } from '../constants/categories';
-import { getTransactionType, parseCategory, validateForm } from '../utils/helpers';
+import { getTransactionType, parseCategory } from '../utils/helpers';
 
 export const useExpenseTracker = () => {
   const [transactions, setTransactions] = useState([]);
@@ -142,6 +142,84 @@ export const useExpenseTracker = () => {
     setValidationErrors({});
   };
 
+  // Validation function
+  const validateForm = (data) => {
+    const errors = {};
+    
+    if (!data.date) errors.date = 'Date is required';
+    if (!data.amount || parseFloat(data.amount) <= 0) errors.amount = 'Valid amount is required';
+    if (!data.category) errors.category = 'Category is required';
+    if (!data.description.trim()) errors.description = 'Description is required';
+    if (!data.account) errors.account = 'Account is required';
+    
+    return {
+      errors,
+      isValid: Object.keys(errors).length === 0
+    };
+  };
+
+  const addTransaction = async (addToSheets) => {
+    const { errors, isValid } = validateForm(formData);
+    
+    if (!isValid) {
+      setValidationErrors(errors);
+      return false;
+    }
+
+    const newTransaction = {
+      id: editingTransaction ? editingTransaction.id : `local_${Date.now()}_${Math.random()}`,
+      date: formData.date,
+      amount: parseFloat(formData.amount),
+      category: formData.category,
+      description: formData.description.trim(),
+      account: formData.account,
+      tag: formData.tag.trim(),
+      type: getTransactionType(formData.category),
+      synced: false,
+      source: 'local',
+      sheetRow: editingTransaction?.sheetRow
+    };
+
+    // Try to sync to Google Sheets if function provided
+    if (addToSheets) {
+      const syncSuccess = await addToSheets(newTransaction);
+      if (syncSuccess) {
+        newTransaction.synced = true;
+        newTransaction.source = 'sheets';
+      }
+    }
+
+    // Update local state
+    if (editingTransaction) {
+      setTransactions(prev => prev.map(t => 
+        t.id === editingTransaction.id ? newTransaction : t
+      ));
+    } else {
+      setTransactions(prev => [...prev, newTransaction]);
+    }
+
+    resetForm();
+    return true;
+  };
+
+  const editTransaction = (transaction) => {
+    setEditingTransaction(transaction);
+    setFormData({
+      date: transaction.date,
+      amount: transaction.amount.toString(),
+      category: transaction.category,
+      description: transaction.description,
+      account: transaction.account,
+      tag: transaction.tag || ''
+    });
+  };
+
+  const deleteTransaction = (transactionId) => {
+    if (!window.confirm('Are you sure you want to delete this transaction?')) return false;
+    setTransactions(prev => prev.filter(t => t.id !== transactionId));
+    return true;
+  };
+
   return {
     // State
     transactions,
@@ -174,6 +252,9 @@ export const useExpenseTracker = () => {
     
     // Actions
     clearFilters,
-    resetForm
+    resetForm,
+    addTransaction,
+    editTransaction,
+    deleteTransaction
   };
 };
