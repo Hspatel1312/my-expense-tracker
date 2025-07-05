@@ -1,45 +1,13 @@
-// Delete transaction
-  const deleteTransaction = async (transaction) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) {
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      if (transaction.source === 'sheets') {
-        const success = await deleteTransactionFromSheets(transaction);
-        if (!success && sheetsConfig.isConnected) {
-          throw new Error('Failed to delete from Google Sheets');
-        }
-      }
-
-      setTransactions(prev => prev.filter(t => t.id !== transaction.id));
-
-      // Update local balances only if not connected to sheets
-      if (!sheetsConfig.isConnected) {
-        setBalances(prev => ({
-          ...prev,
-          [transaction.account]: transaction.type === 'Income' 
-            ? (prev[transaction.account] || 0) - transaction.amount
-            : (prev[transaction.account] || 0) + transaction.amount
-        }));
-      }
-
-    } catch (error) {
-      setError(`Failed to delete transaction: ${error.message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PlusCircle, BarChart3, CreditCard, TrendingUp, Search, DollarSign, ArrowUpDown, Wallet, Eye, EyeOff, Sparkles, Target, PieChart, Activity, AlertTriangle, CheckCircle, Star, Award, RefreshCw, Cloud, CloudOff, Trash2, Edit, Filter, X } from 'lucide-react';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const ExpenseTracker = () => {
-  // Google Sheets Configuration (removed clientId since it's hardcoded)
+  // Google Sheets Configuration
   const [sheetsConfig, setSheetsConfig] = useState({
     spreadsheetId: '',
     apiKey: '',
+    clientId: '', // Now user-configurable
     isConnected: false,
     lastSync: null
   });
@@ -48,8 +16,8 @@ const ExpenseTracker = () => {
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Master data for categories and accounts
-  const [masterData] = useState({
+  // Master data for categories and accounts - accounts will be dynamic from sheets
+  const [masterData, setMasterData] = useState({
     categories: [
       { main: 'Food', sub: 'Food', combined: 'Food > Food' },
       { main: 'Fuel', sub: 'Honda City', combined: 'Fuel > Honda City' },
@@ -79,7 +47,7 @@ const ExpenseTracker = () => {
       { main: 'Social Life', sub: 'Social Life', combined: 'Social Life > Social Life' },
       { main: 'Entertainment', sub: 'Entertainment', combined: 'Entertainment > Entertainment' }
     ],
-    accounts: ['Kotak', 'ICICI Credit Card', 'HDFC Credit Card']
+    accounts: [] // Will be populated from Google Sheets
   });
 
   const categoryColors = useMemo(() => ({
@@ -101,9 +69,9 @@ const ExpenseTracker = () => {
     'Income': '#66BB6A'
   }), []);
 
-  // State management - Remove hardcoded balances
+  // State management
   const [transactions, setTransactions] = useState([]);
-  const [balances, setBalances] = useState({}); // Will be loaded from Google Sheets
+  const [balances, setBalances] = useState({}); // Will be populated from Google Sheets
 
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [isFormVisible, setIsFormVisible] = useState(false);
@@ -115,14 +83,14 @@ const ExpenseTracker = () => {
     amount: '',
     category: '',
     description: '',
-    account: '', // Will be set dynamically when accounts are loaded
+    account: '',
     tag: ''
   });
 
   // Autocomplete states
   const [categorySearch, setCategorySearch] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [accountSearch, setAccountSearch] = useState(''); // Will be set dynamically
+  const [accountSearch, setAccountSearch] = useState('');
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
 
   const [currentView, setCurrentView] = useState('dashboard');
@@ -144,9 +112,9 @@ const ExpenseTracker = () => {
   const [error, setError] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
 
-  // Google Sheets API Functions with proper authentication
-  const TRANSACTIONS_RANGE = 'Sheet1!A:I'; // Transaction data
-  const ACCOUNTS_RANGE = 'Data!E:G'; // Account balances data
+  // Google Sheets API Functions
+  const TRANSACTIONS_RANGE = 'Transactions!A:I';
+  const ACCOUNTS_RANGE = 'Data!E:G'; // E=Account, F=Starting Balance, G=Ending Balance
 
   // Load the Google APIs library
   const loadGoogleAPI = () => {
@@ -169,16 +137,13 @@ const ExpenseTracker = () => {
   };
 
   // Initialize Google API
-  const initializeGoogleAPI = async (apiKey) => {
+  const initializeGoogleAPI = async (apiKey, clientId) => {
     try {
       const gapi = await loadGoogleAPI();
       
-      // Replace with your actual OAuth Client ID
-      const OAUTH_CLIENT_ID = "130621204284-j2gk44qb30mvkd4pm7soav68nphtfkok.apps.googleusercontent.com"; // TODO: Replace this with your actual OAuth Client ID
-      
       await gapi.client.init({
         apiKey: apiKey,
-        clientId: OAUTH_CLIENT_ID,
+        clientId: clientId,
         discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
         scope: 'https://www.googleapis.com/auth/spreadsheets'
       });
@@ -204,7 +169,7 @@ const ExpenseTracker = () => {
     }
   };
 
-  // Load account balances from Google Sheets Data sheet
+  // Load account balances from Google Sheets Data tab
   const loadAccountBalances = async () => {
     try {
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
@@ -213,28 +178,37 @@ const ExpenseTracker = () => {
       });
 
       const rows = response.result.values || [];
-      
-      // Skip header row and process account data
-      const accountRows = rows.slice(1);
       const newBalances = {};
-      
-      accountRows.forEach(row => {
-        if (row && row.length >= 3 && row[0]) { // Account name exists
+      const accountsList = [];
+
+      // Skip header row and process account data
+      rows.slice(1).forEach(row => {
+        if (row && row.length >= 3 && row[0]) { // E, F, G columns (account, starting, ending)
           const accountName = row[0].trim();
-          const endingBalance = parseFloat(row[2]) || 0; // Column G (index 2)
+          const endingBalance = parseFloat(row[2]) || 0; // G column (Ending Balance)
+          
           newBalances[accountName] = endingBalance;
+          accountsList.push(accountName);
         }
       });
 
       setBalances(newBalances);
-      return newBalances;
+      setMasterData(prev => ({ ...prev, accounts: accountsList }));
+
+      // Set default account for form if not set
+      if (accountsList.length > 0 && !formData.account) {
+        setFormData(prev => ({ ...prev, account: accountsList[0] }));
+        setAccountSearch(accountsList[0]);
+      }
+
+      return { balances: newBalances, accounts: accountsList };
     } catch (error) {
       console.error('Failed to load account balances:', error);
       throw error;
     }
   };
 
-  // Real Google Sheets API integration with authentication
+  // Load data from Google Sheets
   const loadDataFromGoogleSheets = async () => {
     if (!sheetsConfig.isConnected || !sheetsConfig.spreadsheetId || !sheetsConfig.apiKey) {
       return;
@@ -244,14 +218,14 @@ const ExpenseTracker = () => {
       setSyncStatus('syncing');
       setError(null);
 
-      // Initialize and authenticate (clientId is now hardcoded)
-      await initializeGoogleAPI(sheetsConfig.apiKey);
+      // Initialize and authenticate
+      await initializeGoogleAPI(sheetsConfig.apiKey, sheetsConfig.clientId);
       await authenticateGoogle();
 
       // Load account balances first
       await loadAccountBalances();
 
-      // Read transaction data from sheets
+      // Load transactions
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: sheetsConfig.spreadsheetId,
         range: TRANSACTIONS_RANGE
@@ -263,7 +237,7 @@ const ExpenseTracker = () => {
       const dataRows = rows.slice(1);
       
       const sheetsTransactions = dataRows
-        .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3]) // Validate required fields
+        .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
         .map((row, index) => ({
           id: `sheet_${index}_${Date.now()}`,
           date: formatDateForInput(row[0]),
@@ -271,11 +245,11 @@ const ExpenseTracker = () => {
           category: row[2] || '',
           description: row[3] || '',
           tag: row[4] || '',
-          account: row[5] || 'Kotak',
+          account: row[5] || '',
           type: row[8] || getTransactionType(row[2] || ''),
           synced: true,
           source: 'sheets',
-          sheetRow: index + 2 // +2 because of 0-based index and header row
+          sheetRow: index + 2
         }));
 
       setTransactions(sheetsTransactions);
@@ -285,11 +259,11 @@ const ExpenseTracker = () => {
     } catch (error) {
       console.error('Failed to load data from Google Sheets:', error);
       if (error.status === 401) {
-        setError('Authentication failed. Please check your OAuth Client ID is set correctly in the code.');
+        setError('Authentication failed. Please check your credentials and try again.');
       } else if (error.status === 403) {
-        setError('Access denied. Please check your spreadsheet permissions and make sure it\'s shared.');
-      } else if (error.message.includes('CLIENT_ID')) {
-        setError('OAuth Client ID not configured. Please update the hardcoded CLIENT_ID in the code.');
+        setError('Access denied. Please check your spreadsheet permissions and API key.');
+      } else if (error.status === 404) {
+        setError('Spreadsheet not found. Please check the Spreadsheet ID.');
       } else {
         setError(`Failed to sync with Google Sheets: ${error.message}`);
       }
@@ -299,23 +273,21 @@ const ExpenseTracker = () => {
     }
   };
 
-  // Add new transaction to Google Sheets with authentication
+  // Add new transaction to Google Sheets
   const addTransactionToSheets = async (transaction) => {
     if (!sheetsConfig.isConnected) return false;
 
     try {
-      // Ensure authentication
       await authenticateGoogle();
 
-      // Find the last row with data in transactions sheet
+      // Find the last row with data
       const readResponse = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: sheetsConfig.spreadsheetId,
         range: TRANSACTIONS_RANGE
       });
       
-      const lastRow = (readResponse.result.values?.length || 1) + 1; // +1 for next empty row
+      const lastRow = (readResponse.result.values?.length || 1) + 1;
       
-      // Prepare row data
       const rowData = [
         transaction.date,
         transaction.amount,
@@ -328,128 +300,28 @@ const ExpenseTracker = () => {
         transaction.type
       ];
 
-      // Append to Google Sheets
       await window.gapi.client.sheets.spreadsheets.values.append({
         spreadsheetId: sheetsConfig.spreadsheetId,
-        range: `Sheet1!A${lastRow}`,
+        range: `Transactions!A${lastRow}`,
         valueInputOption: 'USER_ENTERED',
         resource: {
           values: [rowData]
         }
       });
 
-      // Update account balance in Data sheet
-      await updateAccountBalanceInSheets(transaction.account, transaction.amount, transaction.type);
-
       return true;
     } catch (error) {
       console.error('Failed to add transaction to Google Sheets:', error);
-      if (error.status === 401) {
-        setError('Authentication expired. Please reconnect to Google Sheets.');
-      } else {
-        setError(`Failed to sync transaction: ${error.message}`);
-      }
+      setError(`Failed to sync transaction: ${error.message}`);
       return false;
     }
   };
 
-  // Update account balance in Google Sheets Data sheet
-  const updateAccountBalanceInSheets = async (accountName, amount, transactionType) => {
-    try {
-      // Get current account balances
-      const response = await window.gapi.client.sheets.spreadsheets.values.get({
-        spreadsheetId: sheetsConfig.spreadsheetId,
-        range: ACCOUNTS_RANGE
-      });
-
-      const rows = response.result.values || [];
-      let accountRowIndex = -1;
-      let currentBalance = 0;
-
-      // Find the account row
-      rows.forEach((row, index) => {
-        if (row && row[0] && row[0].trim() === accountName) {
-          accountRowIndex = index + 1; // +1 because sheets are 1-indexed
-          currentBalance = parseFloat(row[2]) || 0; // Column G (index 2)
-        }
-      });
-
-      // Calculate new balance
-      const newBalance = transactionType === 'Income' 
-        ? currentBalance + amount 
-        : currentBalance - amount;
-
-      if (accountRowIndex > 0) {
-        // Update existing account balance
-        await window.gapi.client.sheets.spreadsheets.values.update({
-          spreadsheetId: sheetsConfig.spreadsheetId,
-          range: `Data!G${accountRowIndex}`,
-          valueInputOption: 'USER_ENTERED',
-          resource: {
-            values: [[newBalance]]
-          }
-        });
-      } else {
-        // Add new account if it doesn't exist
-        const newRowIndex = rows.length + 1;
-        await window.gapi.client.sheets.spreadsheets.values.update({
-          spreadsheetId: sheetsConfig.spreadsheetId,
-          range: `Data!E${newRowIndex}:G${newRowIndex}`,
-          valueInputOption: 'USER_ENTERED',
-          resource: {
-            values: [[accountName, 0, newBalance]] // Account, Starting Balance, Ending Balance
-          }
-        });
-      }
-
-      // Update local balances
-      setBalances(prev => ({
-        ...prev,
-        [accountName]: newBalance
-      }));
-
-    } catch (error) {
-      console.error('Failed to update account balance:', error);
-    }
-  };
-
-  // Delete transaction from Google Sheets with authentication
-  const deleteTransactionFromSheets = async (transaction) => {
-    if (!sheetsConfig.isConnected || !transaction.sheetRow) return false;
-
-    try {
-      // Ensure authentication
-      await authenticateGoogle();
-
-      // Clear the row in Google Sheets
-      await window.gapi.client.sheets.spreadsheets.values.clear({
-        spreadsheetId: sheetsConfig.spreadsheetId,
-        range: `Sheet1!A${transaction.sheetRow}:I${transaction.sheetRow}`
-      });
-
-      // Reverse the account balance change
-      const reverseAmount = transaction.amount;
-      const reverseType = transaction.type === 'Income' ? 'Expense' : 'Income';
-      await updateAccountBalanceInSheets(transaction.account, reverseAmount, reverseType);
-
-      return true;
-    } catch (error) {
-      console.error('Failed to delete transaction from Google Sheets:', error);
-      if (error.status === 401) {
-        setError('Authentication expired. Please reconnect to Google Sheets.');
-      } else {
-        setError(`Failed to delete transaction: ${error.message}`);
-      }
-      return false;
-    }
-  };
-
-  // Update transaction in Google Sheets with authentication
+  // Update transaction in Google Sheets
   const updateTransactionInSheets = async (transaction) => {
     if (!sheetsConfig.isConnected || !transaction.sheetRow) return false;
 
     try {
-      // Ensure authentication
       await authenticateGoogle();
 
       const rowData = [
@@ -459,14 +331,14 @@ const ExpenseTracker = () => {
         transaction.description,
         transaction.tag,
         transaction.account,
-        '', // Empty column
-        '', // Empty column  
+        '', 
+        '', 
         transaction.type
       ];
 
       await window.gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId: sheetsConfig.spreadsheetId,
-        range: `Sheet1!A${transaction.sheetRow}:I${transaction.sheetRow}`,
+        range: `Transactions!A${transaction.sheetRow}:I${transaction.sheetRow}`,
         valueInputOption: 'USER_ENTERED',
         resource: {
           values: [rowData]
@@ -476,24 +348,40 @@ const ExpenseTracker = () => {
       return true;
     } catch (error) {
       console.error('Failed to update transaction in Google Sheets:', error);
-      if (error.status === 401) {
-        setError('Authentication expired. Please reconnect to Google Sheets.');
-      } else {
-        setError(`Failed to update transaction: ${error.message}`);
-      }
+      setError(`Failed to update transaction: ${error.message}`);
       return false;
     }
   };
 
-  // Connect to Google Sheets with proper authentication
-  const connectToGoogleSheets = async (spreadsheetId, apiKey) => {
+  // Delete transaction from Google Sheets
+  const deleteTransactionFromSheets = async (transaction) => {
+    if (!sheetsConfig.isConnected || !transaction.sheetRow) return false;
+
+    try {
+      await authenticateGoogle();
+
+      await window.gapi.client.sheets.spreadsheets.values.clear({
+        spreadsheetId: sheetsConfig.spreadsheetId,
+        range: `Transactions!A${transaction.sheetRow}:I${transaction.sheetRow}`
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Failed to delete transaction from Google Sheets:', error);
+      setError(`Failed to delete transaction: ${error.message}`);
+      return false;
+    }
+  };
+
+  // Connect to Google Sheets
+  const connectToGoogleSheets = async (spreadsheetId, apiKey, clientId) => {
     setSyncStatus('syncing');
     setIsLoading(true);
     setError(null);
 
     try {
-      // Initialize Google API (clientId is now hardcoded)
-      await initializeGoogleAPI(apiKey);
+      // Initialize Google API
+      await initializeGoogleAPI(apiKey, clientId);
       
       // Test connection by trying to read the spreadsheet metadata
       await window.gapi.client.sheets.spreadsheets.get({
@@ -507,6 +395,7 @@ const ExpenseTracker = () => {
       setSheetsConfig({
         spreadsheetId,
         apiKey,
+        clientId,
         isConnected: true,
         lastSync: null
       });
@@ -519,7 +408,7 @@ const ExpenseTracker = () => {
       if (error.status === 404) {
         setError('Spreadsheet not found. Please check the Spreadsheet ID.');
       } else if (error.status === 401) {
-        setError('Invalid API key or authentication failed.');
+        setError('Invalid API key or Client ID.');
       } else if (error.status === 403) {
         setError('Access denied. Please check spreadsheet permissions.');
       } else {
@@ -530,7 +419,6 @@ const ExpenseTracker = () => {
       setIsLoading(false);
     }
   };
-
   // Utility functions
   const formatDateForInput = (dateString) => {
     try {
@@ -555,20 +443,6 @@ const ExpenseTracker = () => {
     return mainCategory === 'Income' ? 'Income' : 'Expense';
   };
 
-  const updateBalancesFromTransactions = (transactionList) => {
-    const newBalances = { ...balances };
-    
-    transactionList.forEach(t => {
-      if (t.type === 'Income') {
-        newBalances[t.account] = (newBalances[t.account] || 0) + t.amount;
-      } else {
-        newBalances[t.account] = (newBalances[t.account] || 0) - t.amount;
-      }
-    });
-    
-    setBalances(newBalances);
-  };
-
   // Form validation
   const validateForm = () => {
     const errors = {};
@@ -587,6 +461,10 @@ const ExpenseTracker = () => {
     
     if (!formData.date) {
       errors.date = 'Date is required';
+    }
+
+    if (!formData.account.trim()) {
+      errors.account = 'Account is required';
     }
 
     setValidationErrors(errors);
@@ -622,7 +500,6 @@ const ExpenseTracker = () => {
       };
 
       if (editingTransaction) {
-        // Update existing transaction
         const success = await updateTransactionInSheets(transactionData);
         if (success || !sheetsConfig.isConnected) {
           setTransactions(prev => 
@@ -630,20 +507,8 @@ const ExpenseTracker = () => {
           );
         }
       } else {
-        // Add new transaction
         const success = await addTransactionToSheets(transactionData);
         setTransactions(prev => [{ ...transactionData, synced: success }, ...prev]);
-        
-        // Update local balances only if not connected to sheets (sheets will handle it)
-        if (!sheetsConfig.isConnected) {
-          const amount = parseFloat(formData.amount);
-          setBalances(prev => ({
-            ...prev,
-            [formData.account]: transactionType === 'Income' 
-              ? (prev[formData.account] || 0) + amount
-              : (prev[formData.account] || 0) - amount
-          }));
-        }
       }
 
       // Reset form
@@ -652,11 +517,11 @@ const ExpenseTracker = () => {
         amount: '',
         category: '',
         description: '',
-        account: Object.keys(balances).length > 0 ? Object.keys(balances)[0] : 'Kotak',
+        account: masterData.accounts[0] || '',
         tag: ''
       });
       setCategorySearch('');
-      setAccountSearch(Object.keys(balances).length > 0 ? Object.keys(balances)[0] : 'Kotak');
+      setAccountSearch(masterData.accounts[0] || '');
       setEditingTransaction(null);
       setIsFormVisible(false);
       setValidationErrors({});
@@ -686,14 +551,6 @@ const ExpenseTracker = () => {
 
       setTransactions(prev => prev.filter(t => t.id !== transaction.id));
 
-      // Update balances
-      setBalances(prev => ({
-        ...prev,
-        [transaction.account]: transaction.type === 'Income' 
-          ? prev[transaction.account] - transaction.amount
-          : prev[transaction.account] + transaction.amount
-      }));
-
     } catch (error) {
       setError(`Failed to delete transaction: ${error.message}`);
     } finally {
@@ -717,18 +574,14 @@ const ExpenseTracker = () => {
     setIsFormVisible(true);
   };
 
-  // Filter categories and accounts based on search - now dynamic from balances
+  // Filter categories and accounts based on search
   const filteredCategories = masterData.categories.filter(cat =>
     cat.combined.toLowerCase().includes(categorySearch.toLowerCase())
   );
 
-  const filteredAccounts = Object.keys(balances).length > 0 
-    ? Object.keys(balances).filter(acc =>
-        acc.toLowerCase().includes(accountSearch.toLowerCase())
-      )
-    : masterData.accounts.filter(acc =>
-        acc.toLowerCase().includes(accountSearch.toLowerCase())
-      );
+  const filteredAccounts = masterData.accounts.filter(acc =>
+    acc.toLowerCase().includes(accountSearch.toLowerCase())
+  );
 
   // Enhanced filtering
   const getFilteredTransactions = () => {
@@ -849,15 +702,6 @@ const ExpenseTracker = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  // Set default account when balances are loaded
-  useEffect(() => {
-    if (Object.keys(balances).length > 0 && !formData.account) {
-      const firstAccount = Object.keys(balances)[0];
-      setFormData(prev => ({ ...prev, account: firstAccount }));
-      setAccountSearch(firstAccount);
-    }
-  }, [balances, formData.account]);
 
   // Auto-sync when connected
   useEffect(() => {
@@ -1293,14 +1137,9 @@ const ExpenseTracker = () => {
                         className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">All Accounts</option>
-                        {Object.keys(balances).length > 0 
-                          ? Object.keys(balances).map(acc => (
-                              <option key={acc} value={acc}>{acc}</option>
-                            ))
-                          : masterData.accounts.map(acc => (
-                              <option key={acc} value={acc}>{acc}</option>
-                            ))
-                        }
+                        {masterData.accounts.map(acc => (
+                          <option key={acc} value={acc}>{acc}</option>
+                        ))}
                       </select>
                     </div>
                     
@@ -1511,11 +1350,11 @@ const ExpenseTracker = () => {
                       amount: '',
                       category: '',
                       description: '',
-                      account: 'Kotak',
+                      account: masterData.accounts[0] || '',
                       tag: ''
                     });
                     setCategorySearch('');
-                    setAccountSearch('Kotak');
+                    setAccountSearch(masterData.accounts[0] || '');
                     setValidationErrors({});
                   }}
                   className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-all duration-200"
@@ -1610,9 +1449,14 @@ const ExpenseTracker = () => {
                       setShowAccountDropdown(true);
                     }}
                     onFocus={() => setShowAccountDropdown(true)}
-                    className="w-full px-4 py-3 bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white transition-all duration-200"
+                    className={`w-full px-4 py-3 bg-gray-50/80 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white transition-all duration-200 ${
+                      validationErrors.account ? 'border-red-300' : 'border-gray-200'
+                    }`}
                     placeholder="Select account..."
                   />
+                  {validationErrors.account && (
+                    <p className="text-red-500 text-xs mt-1">{validationErrors.account}</p>
+                  )}
                   {showAccountDropdown && filteredAccounts.length > 0 && (
                     <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg max-h-32 overflow-y-auto z-10">
                       {filteredAccounts.map((acc, index) => (
@@ -1757,10 +1601,22 @@ const ExpenseTracker = () => {
                     />
                     <p className="text-xs text-gray-500 mt-1">From Google Cloud Console</p>
                   </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">OAuth Client ID</label>
+                    <input
+                      type="text"
+                      placeholder="Enter your OAuth 2.0 Client ID"
+                      value={sheetsConfig.clientId}
+                      onChange={(e) => setSheetsConfig(prev => ({ ...prev, clientId: e.target.value }))}
+                      className="w-full px-4 py-3 bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">OAuth 2.0 Client ID from Google Cloud Console</p>
+                  </div>
                   
                   <button
-                    onClick={() => connectToGoogleSheets(sheetsConfig.spreadsheetId, sheetsConfig.apiKey)}
-                    disabled={!sheetsConfig.spreadsheetId || !sheetsConfig.apiKey || isLoading}
+                    onClick={() => connectToGoogleSheets(sheetsConfig.spreadsheetId, sheetsConfig.apiKey, sheetsConfig.clientId)}
+                    disabled={!sheetsConfig.spreadsheetId || !sheetsConfig.apiKey || !sheetsConfig.clientId || isLoading}
                     className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-semibold transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoading ? (
@@ -1779,10 +1635,10 @@ const ExpenseTracker = () => {
                     </p>
                     <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
                       <li>Create a Google Cloud project and enable Sheets API</li>
-                      <li>Create OAuth 2.0 credentials in Google Cloud Console</li>
-                      <li>Replace the hardcoded Client ID in the app code</li>
-                      <li>Make your Google Sheet publicly readable OR share with your email</li>
-                      <li>You'll be prompted to sign in to Google when connecting</li>
+                      <li>Create API key and OAuth 2.0 credentials</li>
+                      <li>Add your domain to authorized origins</li>
+                      <li>Create sheets: "Transactions" and "Data"</li>
+                      <li>In "Data" sheet, add accounts in column E with balances in column G</li>
                     </ol>
                   </div>
                 </div>
@@ -1794,7 +1650,7 @@ const ExpenseTracker = () => {
                       <div>
                         <p className="font-semibold text-green-900">Connected Successfully!</p>
                         <p className="text-sm text-green-700">
-                          {transactions.length} transactions loaded • Last synced: {sheetsConfig.lastSync ? new Date(sheetsConfig.lastSync).toLocaleTimeString() : 'Never'}
+                          {transactions.length} transactions loaded • {Object.keys(balances).length} accounts found • Last synced: {sheetsConfig.lastSync ? new Date(sheetsConfig.lastSync).toLocaleTimeString() : 'Never'}
                         </p>
                       </div>
                     </div>
@@ -1821,9 +1677,16 @@ const ExpenseTracker = () => {
                     
                     <button
                       onClick={() => {
-                        setSheetsConfig({ spreadsheetId: '', apiKey: '', isConnected: false, lastSync: null });
+                        setSheetsConfig({ 
+                          spreadsheetId: '', 
+                          apiKey: '', 
+                          clientId: '', 
+                          isConnected: false, 
+                          lastSync: null 
+                        });
                         setTransactions([]);
-                        setBalances({}); // Reset to empty object since balances come from sheets
+                        setBalances({});
+                        setMasterData(prev => ({ ...prev, accounts: [] }));
                       }}
                       className="px-4 py-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all duration-200"
                     >
