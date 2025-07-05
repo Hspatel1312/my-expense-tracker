@@ -178,6 +178,7 @@ export const useGoogleSheets = () => {
       setIsLoading(false);
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheetsConfig.spreadsheetId]);
 
   const loadAccountBalances = async () => {
