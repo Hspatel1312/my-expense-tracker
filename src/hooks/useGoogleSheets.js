@@ -55,7 +55,7 @@ export const useGoogleSheets = () => {
     });
   };
 
-  const initializeGoogleAPI = async () => {
+  const initializeGoogleAPI = useCallback(async () => {
     try {
       const gapi = await loadGoogleAPI();
       
@@ -72,7 +72,7 @@ export const useGoogleSheets = () => {
       console.error('Failed to initialize Google API:', error);
       throw error;
     }
-  };
+  }, [sheetsConfig.apiKey, sheetsConfig.clientId]);
 
   const authenticateGoogle = async () => {
     try {
@@ -117,7 +117,7 @@ export const useGoogleSheets = () => {
       setIsLoading(false);
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-  }, [sheetsConfig.spreadsheetId, sheetsConfig.apiKey, sheetsConfig.clientId]);
+  }, [sheetsConfig.spreadsheetId, initializeGoogleAPI]);
 
   const loadAccountBalances = async () => {
     try {
