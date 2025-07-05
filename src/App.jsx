@@ -38,7 +38,13 @@ const App = () => {
         setError('Failed to sync with Google Sheets');
       }
     }
-  }, [googleSheets.sheetsConfig.isConnected, googleSheets.manualSync, expenseTracker.setBalances, expenseTracker.setMasterData, expenseTracker.setTransactions]);
+  }, [
+    googleSheets.sheetsConfig.isConnected, 
+    googleSheets.manualSync, 
+    expenseTracker.setBalances, 
+    expenseTracker.setMasterData, 
+    expenseTracker.setTransactions
+  ]);
 
   useEffect(() => {
     syncData();
