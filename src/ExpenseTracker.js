@@ -115,10 +115,62 @@ const ExpenseTracker = () => {
   const [error, setError] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
 
-  // Google Sheets API Functions
+  // Google Sheets API Functions with proper authentication
   const SHEET_RANGE = 'Sheet1!A:I'; // Assuming columns A-I for transaction data
 
-  // Real Google Sheets API integration
+  // Load the Google APIs library
+  const loadGoogleAPI = () => {
+    return new Promise((resolve, reject) => {
+      if (window.gapi) {
+        resolve(window.gapi);
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://apis.google.com/js/api.js';
+      script.onload = () => {
+        window.gapi.load('client:auth2', () => {
+          resolve(window.gapi);
+        });
+      };
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  };
+
+  // Initialize Google API
+  const initializeGoogleAPI = async (apiKey) => {
+    try {
+      const gapi = await loadGoogleAPI();
+      
+      await gapi.client.init({
+        apiKey: apiKey,
+        discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
+        scope: 'https://www.googleapis.com/auth/spreadsheets'
+      });
+
+      return gapi;
+    } catch (error) {
+      console.error('Failed to initialize Google API:', error);
+      throw error;
+    }
+  };
+
+  // Authenticate with Google
+  const authenticateGoogle = async () => {
+    try {
+      const authInstance = window.gapi.auth2.getAuthInstance();
+      if (!authInstance.isSignedIn.get()) {
+        await authInstance.signIn();
+      }
+      return true;
+    } catch (error) {
+      console.error('Authentication failed:', error);
+      throw new Error('Google authentication failed. Please try again.');
+    }
+  };
+
+  // Real Google Sheets API integration with authentication
   const loadDataFromGoogleSheets = async () => {
     if (!sheetsConfig.isConnected || !sheetsConfig.spreadsheetId || !sheetsConfig.apiKey) {
       return;
@@ -128,17 +180,18 @@ const ExpenseTracker = () => {
       setSyncStatus('syncing');
       setError(null);
 
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetsConfig.spreadsheetId}/values/${SHEET_RANGE}?key=${sheetsConfig.apiKey}`;
-      
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`Google Sheets API error: ${response.status} ${response.statusText}`);
-      }
+      // Initialize and authenticate
+      await initializeGoogleAPI(sheetsConfig.apiKey);
+      await authenticateGoogle();
 
-      const data = await response.json();
-      const rows = data.values || [];
+      // Read data from sheets
+      const response = await window.gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: sheetsConfig.spreadsheetId,
+        range: SHEET_RANGE
+      });
 
+      const rows = response.result.values || [];
+      
       // Skip header row if exists
       const dataRows = rows.slice(1);
       
@@ -167,24 +220,34 @@ const ExpenseTracker = () => {
 
     } catch (error) {
       console.error('Failed to load data from Google Sheets:', error);
-      setError(`Failed to sync with Google Sheets: ${error.message}`);
+      if (error.status === 401) {
+        setError('Authentication failed. Please reconnect to Google Sheets.');
+      } else if (error.status === 403) {
+        setError('Access denied. Please check your spreadsheet permissions.');
+      } else {
+        setError(`Failed to sync with Google Sheets: ${error.message}`);
+      }
       setSyncStatus('error');
     } finally {
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
   };
 
-  // Add new transaction to Google Sheets
+  // Add new transaction to Google Sheets with authentication
   const addTransactionToSheets = async (transaction) => {
     if (!sheetsConfig.isConnected) return false;
 
     try {
+      // Ensure authentication
+      await authenticateGoogle();
+
       // Find the last row with data
-      const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetsConfig.spreadsheetId}/values/${SHEET_RANGE}?key=${sheetsConfig.apiKey}`;
-      const readResponse = await fetch(readUrl);
-      const readData = await readResponse.json();
+      const readResponse = await window.gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: sheetsConfig.spreadsheetId,
+        range: SHEET_RANGE
+      });
       
-      const lastRow = (readData.values?.length || 1) + 1; // +1 for next empty row
+      const lastRow = (readResponse.result.values?.length || 1) + 1; // +1 for next empty row
       
       // Prepare row data
       const rowData = [
@@ -200,65 +263,61 @@ const ExpenseTracker = () => {
       ];
 
       // Append to Google Sheets
-      const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetsConfig.spreadsheetId}/values/Sheet1!A${lastRow}:I${lastRow}?valueInputOption=USER_ENTERED&key=${sheetsConfig.apiKey}`;
-      
-      const appendResponse = await fetch(appendUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      await window.gapi.client.sheets.spreadsheets.values.append({
+        spreadsheetId: sheetsConfig.spreadsheetId,
+        range: `Sheet1!A${lastRow}`,
+        valueInputOption: 'USER_ENTERED',
+        resource: {
           values: [rowData]
-        })
+        }
       });
-
-      if (!appendResponse.ok) {
-        throw new Error(`Failed to add to Google Sheets: ${appendResponse.status}`);
-      }
 
       return true;
     } catch (error) {
       console.error('Failed to add transaction to Google Sheets:', error);
-      setError(`Failed to sync transaction: ${error.message}`);
+      if (error.status === 401) {
+        setError('Authentication expired. Please reconnect to Google Sheets.');
+      } else {
+        setError(`Failed to sync transaction: ${error.message}`);
+      }
       return false;
     }
   };
 
-  // Delete transaction from Google Sheets
+  // Delete transaction from Google Sheets with authentication
   const deleteTransactionFromSheets = async (transaction) => {
     if (!sheetsConfig.isConnected || !transaction.sheetRow) return false;
 
     try {
-      // Clear the row in Google Sheets
-      const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetsConfig.spreadsheetId}/values/Sheet1!A${transaction.sheetRow}:I${transaction.sheetRow}?key=${sheetsConfig.apiKey}`;
-      
-      const response = await fetch(clearUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          values: [['']] // Clear the row
-        })
-      });
+      // Ensure authentication
+      await authenticateGoogle();
 
-      if (!response.ok) {
-        throw new Error(`Failed to delete from Google Sheets: ${response.status}`);
-      }
+      // Clear the row in Google Sheets
+      await window.gapi.client.sheets.spreadsheets.values.clear({
+        spreadsheetId: sheetsConfig.spreadsheetId,
+        range: `Sheet1!A${transaction.sheetRow}:I${transaction.sheetRow}`
+      });
 
       return true;
     } catch (error) {
       console.error('Failed to delete transaction from Google Sheets:', error);
-      setError(`Failed to delete transaction: ${error.message}`);
+      if (error.status === 401) {
+        setError('Authentication expired. Please reconnect to Google Sheets.');
+      } else {
+        setError(`Failed to delete transaction: ${error.message}`);
+      }
       return false;
     }
   };
 
-  // Update transaction in Google Sheets
+  // Update transaction in Google Sheets with authentication
   const updateTransactionInSheets = async (transaction) => {
     if (!sheetsConfig.isConnected || !transaction.sheetRow) return false;
 
     try {
+      // Ensure authentication
+      await authenticateGoogle();
+
       const rowData = [
         transaction.date,
         transaction.amount,
@@ -271,44 +330,44 @@ const ExpenseTracker = () => {
         transaction.type
       ];
 
-      const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetsConfig.spreadsheetId}/values/Sheet1!A${transaction.sheetRow}:I${transaction.sheetRow}?valueInputOption=USER_ENTERED&key=${sheetsConfig.apiKey}`;
-      
-      const response = await fetch(updateUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      await window.gapi.client.sheets.spreadsheets.values.update({
+        spreadsheetId: sheetsConfig.spreadsheetId,
+        range: `Sheet1!A${transaction.sheetRow}:I${transaction.sheetRow}`,
+        valueInputOption: 'USER_ENTERED',
+        resource: {
           values: [rowData]
-        })
+        }
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to update Google Sheets: ${response.status}`);
-      }
 
       return true;
     } catch (error) {
       console.error('Failed to update transaction in Google Sheets:', error);
-      setError(`Failed to update transaction: ${error.message}`);
+      if (error.status === 401) {
+        setError('Authentication expired. Please reconnect to Google Sheets.');
+      } else {
+        setError(`Failed to update transaction: ${error.message}`);
+      }
       return false;
     }
   };
 
-  // Connect to Google Sheets
+  // Connect to Google Sheets with proper authentication
   const connectToGoogleSheets = async (spreadsheetId, apiKey) => {
     setSyncStatus('syncing');
     setIsLoading(true);
     setError(null);
 
     try {
-      // Test connection by trying to read the spreadsheet
-      const testUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?key=${apiKey}`;
-      const testResponse = await fetch(testUrl);
+      // Initialize Google API
+      await initializeGoogleAPI(apiKey);
+      
+      // Test connection by trying to read the spreadsheet metadata
+      await window.gapi.client.sheets.spreadsheets.get({
+        spreadsheetId: spreadsheetId
+      });
 
-      if (!testResponse.ok) {
-        throw new Error('Invalid Spreadsheet ID or API Key');
-      }
+      // Authenticate user
+      await authenticateGoogle();
 
       // Connection successful
       setSheetsConfig({
@@ -322,7 +381,16 @@ const ExpenseTracker = () => {
       await loadDataFromGoogleSheets();
       
     } catch (error) {
-      setError(`Connection failed: ${error.message}`);
+      console.error('Connection failed:', error);
+      if (error.status === 404) {
+        setError('Spreadsheet not found. Please check the Spreadsheet ID.');
+      } else if (error.status === 401) {
+        setError('Invalid API key or authentication failed.');
+      } else if (error.status === 403) {
+        setError('Access denied. Please check spreadsheet permissions.');
+      } else {
+        setError(`Connection failed: ${error.message}`);
+      }
       setSyncStatus('error');
     } finally {
       setIsLoading(false);
@@ -1554,9 +1622,15 @@ const ExpenseTracker = () => {
                   </button>
                   
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                    <p className="text-sm text-blue-800">
-                      <strong>Note:</strong> Connecting will load all existing transactions from your Google Sheets and enable real-time sync.
+                    <p className="text-sm text-blue-800 mb-3">
+                      <strong>Setup Instructions:</strong>
                     </p>
+                    <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+                      <li>Create a Google Cloud project and enable Sheets API</li>
+                      <li>Create credentials (API Key + OAuth 2.0)</li>
+                      <li>Make your Google Sheet publicly readable OR share with your email</li>
+                      <li>You'll be prompted to sign in to Google when connecting</li>
+                    </ol>
                   </div>
                 </div>
               ) : (
