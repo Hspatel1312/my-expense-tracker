@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Cloud, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
+import { X, Cloud, RefreshCw, CheckCircle } from 'lucide-react';
 
 const SyncModal = ({ 
   isVisible, 
