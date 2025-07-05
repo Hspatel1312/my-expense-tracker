@@ -1,4 +1,37 @@
-import React, { useState, useEffect, useMemo } from 'react';
+// Delete transaction
+  const deleteTransaction = async (transaction) => {
+    if (!window.confirm('Are you sure you want to delete this transaction?')) {
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      if (transaction.source === 'sheets') {
+        const success = await deleteTransactionFromSheets(transaction);
+        if (!success && sheetsConfig.isConnected) {
+          throw new Error('Failed to delete from Google Sheets');
+        }
+      }
+
+      setTransactions(prev => prev.filter(t => t.id !== transaction.id));
+
+      // Update local balances only if not connected to sheets
+      if (!sheetsConfig.isConnected) {
+        setBalances(prev => ({
+          ...prev,
+          [transaction.account]: transaction.type === 'Income' 
+            ? (prev[transaction.account] || 0) - transaction.amount
+            : (prev[transaction.account] || 0) + transaction.amount
+        }));
+      }
+
+    } catch (error) {
+      setError(`Failed to delete transaction: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };import React, { useState, useEffect, useMemo } from 'react';
 import { PlusCircle, BarChart3, CreditCard, TrendingUp, Search, DollarSign, ArrowUpDown, Wallet, Eye, EyeOff, Sparkles, Target, PieChart, Activity, AlertTriangle, CheckCircle, Star, Award, RefreshCw, Cloud, CloudOff, Trash2, Edit, Filter, X } from 'lucide-react';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
@@ -68,13 +101,9 @@ const ExpenseTracker = () => {
     'Income': '#66BB6A'
   }), []);
 
-  // State management
+  // State management - Remove hardcoded balances
   const [transactions, setTransactions] = useState([]);
-  const [balances, setBalances] = useState({
-    'Kotak': 25890.7,
-    'ICICI Credit Card': 0,
-    'HDFC Credit Card': 0
-  });
+  const [balances, setBalances] = useState({}); // Will be loaded from Google Sheets
 
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [isFormVisible, setIsFormVisible] = useState(false);
@@ -86,14 +115,14 @@ const ExpenseTracker = () => {
     amount: '',
     category: '',
     description: '',
-    account: 'Kotak',
+    account: '', // Will be set dynamically when accounts are loaded
     tag: ''
   });
 
   // Autocomplete states
   const [categorySearch, setCategorySearch] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [accountSearch, setAccountSearch] = useState('Kotak');
+  const [accountSearch, setAccountSearch] = useState(''); // Will be set dynamically
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
 
   const [currentView, setCurrentView] = useState('dashboard');
@@ -116,7 +145,8 @@ const ExpenseTracker = () => {
   const [validationErrors, setValidationErrors] = useState({});
 
   // Google Sheets API Functions with proper authentication
-  const SHEET_RANGE = 'Sheet1!A:I'; // Assuming columns A-I for transaction data
+  const TRANSACTIONS_RANGE = 'Sheet1!A:I'; // Transaction data
+  const ACCOUNTS_RANGE = 'Data!E:G'; // Account balances data
 
   // Load the Google APIs library
   const loadGoogleAPI = () => {
@@ -143,8 +173,8 @@ const ExpenseTracker = () => {
     try {
       const gapi = await loadGoogleAPI();
       
-      // Hardcoded OAuth Client ID - replace with your actual Client ID
-      const OAUTH_CLIENT_ID = "130621204284-j2gk44qb30mvkd4pm7soav68nphtfkok.apps.googleusercontent.com"; // Replace this with your actual OAuth Client ID
+      // Replace with your actual OAuth Client ID
+      const OAUTH_CLIENT_ID = "130621204284-j2gk44qb30mvkd4pm7soav68nphtfkok.apps.googleusercontent.com"; // TODO: Replace this with your actual OAuth Client ID
       
       await gapi.client.init({
         apiKey: apiKey,
@@ -174,6 +204,36 @@ const ExpenseTracker = () => {
     }
   };
 
+  // Load account balances from Google Sheets Data sheet
+  const loadAccountBalances = async () => {
+    try {
+      const response = await window.gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: sheetsConfig.spreadsheetId,
+        range: ACCOUNTS_RANGE
+      });
+
+      const rows = response.result.values || [];
+      
+      // Skip header row and process account data
+      const accountRows = rows.slice(1);
+      const newBalances = {};
+      
+      accountRows.forEach(row => {
+        if (row && row.length >= 3 && row[0]) { // Account name exists
+          const accountName = row[0].trim();
+          const endingBalance = parseFloat(row[2]) || 0; // Column G (index 2)
+          newBalances[accountName] = endingBalance;
+        }
+      });
+
+      setBalances(newBalances);
+      return newBalances;
+    } catch (error) {
+      console.error('Failed to load account balances:', error);
+      throw error;
+    }
+  };
+
   // Real Google Sheets API integration with authentication
   const loadDataFromGoogleSheets = async () => {
     if (!sheetsConfig.isConnected || !sheetsConfig.spreadsheetId || !sheetsConfig.apiKey) {
@@ -188,10 +248,13 @@ const ExpenseTracker = () => {
       await initializeGoogleAPI(sheetsConfig.apiKey);
       await authenticateGoogle();
 
-      // Read data from sheets
+      // Load account balances first
+      await loadAccountBalances();
+
+      // Read transaction data from sheets
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: sheetsConfig.spreadsheetId,
-        range: SHEET_RANGE
+        range: TRANSACTIONS_RANGE
       });
 
       const rows = response.result.values || [];
@@ -218,16 +281,15 @@ const ExpenseTracker = () => {
       setTransactions(sheetsTransactions);
       setSheetsConfig(prev => ({ ...prev, lastSync: new Date().toISOString() }));
       setSyncStatus('success');
-      
-      // Update balances based on transactions
-      updateBalancesFromTransactions(sheetsTransactions);
 
     } catch (error) {
       console.error('Failed to load data from Google Sheets:', error);
       if (error.status === 401) {
-        setError('Authentication failed. Please reconnect to Google Sheets.');
+        setError('Authentication failed. Please check your OAuth Client ID is set correctly in the code.');
       } else if (error.status === 403) {
-        setError('Access denied. Please check your spreadsheet permissions.');
+        setError('Access denied. Please check your spreadsheet permissions and make sure it\'s shared.');
+      } else if (error.message.includes('CLIENT_ID')) {
+        setError('OAuth Client ID not configured. Please update the hardcoded CLIENT_ID in the code.');
       } else {
         setError(`Failed to sync with Google Sheets: ${error.message}`);
       }
@@ -245,10 +307,10 @@ const ExpenseTracker = () => {
       // Ensure authentication
       await authenticateGoogle();
 
-      // Find the last row with data
+      // Find the last row with data in transactions sheet
       const readResponse = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: sheetsConfig.spreadsheetId,
-        range: SHEET_RANGE
+        range: TRANSACTIONS_RANGE
       });
       
       const lastRow = (readResponse.result.values?.length || 1) + 1; // +1 for next empty row
@@ -276,6 +338,9 @@ const ExpenseTracker = () => {
         }
       });
 
+      // Update account balance in Data sheet
+      await updateAccountBalanceInSheets(transaction.account, transaction.amount, transaction.type);
+
       return true;
     } catch (error) {
       console.error('Failed to add transaction to Google Sheets:', error);
@@ -285,6 +350,66 @@ const ExpenseTracker = () => {
         setError(`Failed to sync transaction: ${error.message}`);
       }
       return false;
+    }
+  };
+
+  // Update account balance in Google Sheets Data sheet
+  const updateAccountBalanceInSheets = async (accountName, amount, transactionType) => {
+    try {
+      // Get current account balances
+      const response = await window.gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: sheetsConfig.spreadsheetId,
+        range: ACCOUNTS_RANGE
+      });
+
+      const rows = response.result.values || [];
+      let accountRowIndex = -1;
+      let currentBalance = 0;
+
+      // Find the account row
+      rows.forEach((row, index) => {
+        if (row && row[0] && row[0].trim() === accountName) {
+          accountRowIndex = index + 1; // +1 because sheets are 1-indexed
+          currentBalance = parseFloat(row[2]) || 0; // Column G (index 2)
+        }
+      });
+
+      // Calculate new balance
+      const newBalance = transactionType === 'Income' 
+        ? currentBalance + amount 
+        : currentBalance - amount;
+
+      if (accountRowIndex > 0) {
+        // Update existing account balance
+        await window.gapi.client.sheets.spreadsheets.values.update({
+          spreadsheetId: sheetsConfig.spreadsheetId,
+          range: `Data!G${accountRowIndex}`,
+          valueInputOption: 'USER_ENTERED',
+          resource: {
+            values: [[newBalance]]
+          }
+        });
+      } else {
+        // Add new account if it doesn't exist
+        const newRowIndex = rows.length + 1;
+        await window.gapi.client.sheets.spreadsheets.values.update({
+          spreadsheetId: sheetsConfig.spreadsheetId,
+          range: `Data!E${newRowIndex}:G${newRowIndex}`,
+          valueInputOption: 'USER_ENTERED',
+          resource: {
+            values: [[accountName, 0, newBalance]] // Account, Starting Balance, Ending Balance
+          }
+        });
+      }
+
+      // Update local balances
+      setBalances(prev => ({
+        ...prev,
+        [accountName]: newBalance
+      }));
+
+    } catch (error) {
+      console.error('Failed to update account balance:', error);
     }
   };
 
@@ -301,6 +426,11 @@ const ExpenseTracker = () => {
         spreadsheetId: sheetsConfig.spreadsheetId,
         range: `Sheet1!A${transaction.sheetRow}:I${transaction.sheetRow}`
       });
+
+      // Reverse the account balance change
+      const reverseAmount = transaction.amount;
+      const reverseType = transaction.type === 'Income' ? 'Expense' : 'Income';
+      await updateAccountBalanceInSheets(transaction.account, reverseAmount, reverseType);
 
       return true;
     } catch (error) {
@@ -503,17 +633,17 @@ const ExpenseTracker = () => {
         // Add new transaction
         const success = await addTransactionToSheets(transactionData);
         setTransactions(prev => [{ ...transactionData, synced: success }, ...prev]);
-      }
-
-      // Update balances
-      const amount = parseFloat(formData.amount);
-      if (!editingTransaction) {
-        setBalances(prev => ({
-          ...prev,
-          [formData.account]: transactionType === 'Income' 
-            ? prev[formData.account] + amount
-            : prev[formData.account] - amount
-        }));
+        
+        // Update local balances only if not connected to sheets (sheets will handle it)
+        if (!sheetsConfig.isConnected) {
+          const amount = parseFloat(formData.amount);
+          setBalances(prev => ({
+            ...prev,
+            [formData.account]: transactionType === 'Income' 
+              ? (prev[formData.account] || 0) + amount
+              : (prev[formData.account] || 0) - amount
+          }));
+        }
       }
 
       // Reset form
@@ -522,11 +652,11 @@ const ExpenseTracker = () => {
         amount: '',
         category: '',
         description: '',
-        account: 'Kotak',
+        account: Object.keys(balances).length > 0 ? Object.keys(balances)[0] : 'Kotak',
         tag: ''
       });
       setCategorySearch('');
-      setAccountSearch('Kotak');
+      setAccountSearch(Object.keys(balances).length > 0 ? Object.keys(balances)[0] : 'Kotak');
       setEditingTransaction(null);
       setIsFormVisible(false);
       setValidationErrors({});
@@ -587,14 +717,18 @@ const ExpenseTracker = () => {
     setIsFormVisible(true);
   };
 
-  // Filter categories and accounts based on search
+  // Filter categories and accounts based on search - now dynamic from balances
   const filteredCategories = masterData.categories.filter(cat =>
     cat.combined.toLowerCase().includes(categorySearch.toLowerCase())
   );
 
-  const filteredAccounts = masterData.accounts.filter(acc =>
-    acc.toLowerCase().includes(accountSearch.toLowerCase())
-  );
+  const filteredAccounts = Object.keys(balances).length > 0 
+    ? Object.keys(balances).filter(acc =>
+        acc.toLowerCase().includes(accountSearch.toLowerCase())
+      )
+    : masterData.accounts.filter(acc =>
+        acc.toLowerCase().includes(accountSearch.toLowerCase())
+      );
 
   // Enhanced filtering
   const getFilteredTransactions = () => {
@@ -715,6 +849,15 @@ const ExpenseTracker = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Set default account when balances are loaded
+  useEffect(() => {
+    if (Object.keys(balances).length > 0 && !formData.account) {
+      const firstAccount = Object.keys(balances)[0];
+      setFormData(prev => ({ ...prev, account: firstAccount }));
+      setAccountSearch(firstAccount);
+    }
+  }, [balances, formData.account]);
 
   // Auto-sync when connected
   useEffect(() => {
@@ -1150,9 +1293,14 @@ const ExpenseTracker = () => {
                         className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">All Accounts</option>
-                        {masterData.accounts.map(acc => (
-                          <option key={acc} value={acc}>{acc}</option>
-                        ))}
+                        {Object.keys(balances).length > 0 
+                          ? Object.keys(balances).map(acc => (
+                              <option key={acc} value={acc}>{acc}</option>
+                            ))
+                          : masterData.accounts.map(acc => (
+                              <option key={acc} value={acc}>{acc}</option>
+                            ))
+                        }
                       </select>
                     </div>
                     
@@ -1675,11 +1823,7 @@ const ExpenseTracker = () => {
                       onClick={() => {
                         setSheetsConfig({ spreadsheetId: '', apiKey: '', isConnected: false, lastSync: null });
                         setTransactions([]);
-                        setBalances({
-                          'Kotak': 25890.7,
-                          'ICICI Credit Card': 0,
-                          'HDFC Credit Card': 0
-                        });
+                        setBalances({}); // Reset to empty object since balances come from sheets
                       }}
                       className="px-4 py-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all duration-200"
                     >
