@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { SHEETS_CONFIG } from '../constants/config';
 import { formatDateForInput, getTransactionType } from '../utils/helpers';
 
@@ -12,9 +12,9 @@ export const useGoogleSheets = () => {
   const [syncStatus, setSyncStatus] = useState('idle');
   const [isLoading, setIsLoading] = useState(false);
   const [gapiLoaded, setGapiLoaded] = useState(false);
-  const [authInstance, setAuthInstance] = useState(null);
+  const authInstanceRef = useRef(null);
 
-  const loadGoogleAPI = () => {
+  const loadGoogleAPI = useCallback(() => {
     return new Promise((resolve, reject) => {
       if (window.gapi && window.gapi.load) {
         resolve(window.gapi);
@@ -57,7 +57,7 @@ export const useGoogleSheets = () => {
 
       document.head.appendChild(script);
     });
-  };
+  }, []);
 
   const initializeGoogleAPI = useCallback(async () => {
     try {
@@ -78,7 +78,7 @@ export const useGoogleSheets = () => {
 
       // Get auth instance and set up listeners
       const auth = gapi.auth2.getAuthInstance();
-      setAuthInstance(auth);
+      authInstanceRef.current = auth;
 
       // Listen for sign-in state changes
       auth.isSignedIn.listen((isSignedIn) => {
@@ -107,28 +107,19 @@ export const useGoogleSheets = () => {
       console.error('Failed to initialize Google API:', error);
       throw error;
     }
-  }, [sheetsConfig.apiKey, sheetsConfig.clientId, sheetsConfig.spreadsheetId]);
+  }, [sheetsConfig.apiKey, sheetsConfig.clientId, sheetsConfig.spreadsheetId, loadGoogleAPI]);
 
-  const checkAuthStatus = () => {
-    if (authInstance) {
-      const isSignedIn = authInstance.isSignedIn.get();
-      console.log('Checking auth status:', isSignedIn);
-      return isSignedIn;
-    }
-    return false;
-  };
-
-  const ensureAuthenticated = async () => {
+  const ensureAuthenticated = useCallback(async () => {
     try {
-      if (!authInstance) {
+      if (!authInstanceRef.current) {
         await initializeGoogleAPI();
       }
 
-      const isSignedIn = authInstance.isSignedIn.get();
+      const isSignedIn = authInstanceRef.current.isSignedIn.get();
       
       if (!isSignedIn) {
         console.log('Not signed in, prompting for authentication...');
-        await authInstance.signIn();
+        await authInstanceRef.current.signIn();
       }
 
       // Update connection state
@@ -147,7 +138,7 @@ export const useGoogleSheets = () => {
       }));
       throw error;
     }
-  };
+  }, [initializeGoogleAPI]);
 
   const connectToGoogleSheets = useCallback(async () => {
     console.log('Starting Google Sheets connection...');
@@ -178,10 +169,9 @@ export const useGoogleSheets = () => {
       setIsLoading(false);
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sheetsConfig.spreadsheetId]);
+  }, [sheetsConfig.spreadsheetId, ensureAuthenticated]);
 
-  const loadAccountBalances = async () => {
+  const loadAccountBalances = useCallback(async () => {
     try {
       await ensureAuthenticated();
 
@@ -210,9 +200,9 @@ export const useGoogleSheets = () => {
       console.error('Failed to load account balances:', error);
       return { balances: {}, accounts: [] };
     }
-  };
+  }, [sheetsConfig.spreadsheetId, ensureAuthenticated]);
 
-  const loadTransactions = async () => {
+  const loadTransactions = useCallback(async () => {
     try {
       await ensureAuthenticated();
 
@@ -246,9 +236,9 @@ export const useGoogleSheets = () => {
       console.error('Failed to load transactions:', error);
       return [];
     }
-  };
+  }, [sheetsConfig.spreadsheetId, ensureAuthenticated]);
 
-  const addTransactionToSheets = async (transaction) => {
+  const addTransactionToSheets = useCallback(async (transaction) => {
     try {
       console.log('Adding transaction to sheets:', transaction);
       await ensureAuthenticated();
@@ -285,9 +275,9 @@ export const useGoogleSheets = () => {
       console.error('Failed to add transaction:', error);
       return false;
     }
-  };
+  }, [sheetsConfig.spreadsheetId, ensureAuthenticated]);
 
-  const manualSync = async () => {
+  const manualSync = useCallback(async () => {
     if (!sheetsConfig.isConnected) {
       console.log('Not connected, attempting to connect first...');
       await connectToGoogleSheets();
@@ -315,7 +305,7 @@ export const useGoogleSheets = () => {
     } finally {
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-  };
+  }, [sheetsConfig.isConnected, connectToGoogleSheets, loadAccountBalances, loadTransactions]);
 
   // Initialize Google API on mount
   useEffect(() => {
@@ -332,8 +322,6 @@ export const useGoogleSheets = () => {
     manualSync,
     addTransactionToSheets,
     loadAccountBalances,
-    loadTransactions,
-    checkAuthStatus,
-    ensureAuthenticated
+    loadTransactions
   };
 };
