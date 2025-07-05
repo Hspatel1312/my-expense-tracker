@@ -3,11 +3,11 @@ import { PlusCircle, BarChart3, CreditCard, TrendingUp, Search, DollarSign, Arro
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const ExpenseTracker = () => {
-  // Google Sheets Configuration
+  // Google Sheets Configuration - HARDCODED
   const [sheetsConfig, setSheetsConfig] = useState({
-    spreadsheetId: '',
-    apiKey: '',
-    clientId: '', // Now user-configurable
+    spreadsheetId: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
+    apiKey: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
+    clientId: '130621204284-j2gk44qb30mvkd4pm7soav68nphtfkok.apps.googleusercontent.com',
     isConnected: false,
     lastSync: null
   });
@@ -137,13 +137,13 @@ const ExpenseTracker = () => {
   };
 
   // Initialize Google API
-  const initializeGoogleAPI = async (apiKey, clientId) => {
+  const initializeGoogleAPI = async () => {
     try {
       const gapi = await loadGoogleAPI();
       
       await gapi.client.init({
-        apiKey: apiKey,
-        clientId: clientId,
+        apiKey: sheetsConfig.apiKey,
+        clientId: sheetsConfig.clientId,
         discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
         scope: 'https://www.googleapis.com/auth/spreadsheets'
       });
@@ -210,16 +210,12 @@ const ExpenseTracker = () => {
 
   // Load data from Google Sheets
   const loadDataFromGoogleSheets = async () => {
-    if (!sheetsConfig.isConnected || !sheetsConfig.spreadsheetId || !sheetsConfig.apiKey) {
-      return;
-    }
-
     try {
       setSyncStatus('syncing');
       setError(null);
 
       // Initialize and authenticate
-      await initializeGoogleAPI(sheetsConfig.apiKey, sheetsConfig.clientId);
+      await initializeGoogleAPI();
       await authenticateGoogle();
 
       // Load account balances first
@@ -275,8 +271,6 @@ const ExpenseTracker = () => {
 
   // Add new transaction to Google Sheets
   const addTransactionToSheets = async (transaction) => {
-    if (!sheetsConfig.isConnected) return false;
-
     try {
       await authenticateGoogle();
 
@@ -319,7 +313,7 @@ const ExpenseTracker = () => {
 
   // Update transaction in Google Sheets
   const updateTransactionInSheets = async (transaction) => {
-    if (!sheetsConfig.isConnected || !transaction.sheetRow) return false;
+    if (!transaction.sheetRow) return false;
 
     try {
       await authenticateGoogle();
@@ -355,7 +349,7 @@ const ExpenseTracker = () => {
 
   // Delete transaction from Google Sheets
   const deleteTransactionFromSheets = async (transaction) => {
-    if (!sheetsConfig.isConnected || !transaction.sheetRow) return false;
+    if (!transaction.sheetRow) return false;
 
     try {
       await authenticateGoogle();
@@ -373,32 +367,30 @@ const ExpenseTracker = () => {
     }
   };
 
-  // Connect to Google Sheets
-  const connectToGoogleSheets = async (spreadsheetId, apiKey, clientId) => {
+  // Connect to Google Sheets - simplified since everything is hardcoded
+  const connectToGoogleSheets = async () => {
     setSyncStatus('syncing');
     setIsLoading(true);
     setError(null);
 
     try {
       // Initialize Google API
-      await initializeGoogleAPI(apiKey, clientId);
+      await initializeGoogleAPI();
       
       // Test connection by trying to read the spreadsheet metadata
       await window.gapi.client.sheets.spreadsheets.get({
-        spreadsheetId: spreadsheetId
+        spreadsheetId: sheetsConfig.spreadsheetId
       });
 
       // Authenticate user
       await authenticateGoogle();
 
       // Connection successful
-      setSheetsConfig({
-        spreadsheetId,
-        apiKey,
-        clientId,
+      setSheetsConfig(prev => ({
+        ...prev,
         isConnected: true,
         lastSync: null
-      });
+      }));
       
       // Load existing data
       await loadDataFromGoogleSheets();
@@ -703,12 +695,13 @@ const ExpenseTracker = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Auto-sync when connected
+  // Auto-connect to Google Sheets when component mounts
   useEffect(() => {
-    if (sheetsConfig.isConnected) {
-      loadDataFromGoogleSheets();
+    // Auto-connect on first load
+    if (!sheetsConfig.isConnected) {
+      connectToGoogleSheets();
     }
-  }, [sheetsConfig.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
@@ -756,7 +749,7 @@ const ExpenseTracker = () => {
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">Expense Tracker</h1>
                 <p className="text-gray-600 font-medium">
-                  {transactions.length} transactions • {sheetsConfig.isConnected ? 'Synced with Google Sheets' : 'Local storage'}
+                  {transactions.length} transactions • {sheetsConfig.isConnected ? 'Synced with Google Sheets' : 'Connecting...'}
                 </p>
               </div>
             </div>
@@ -943,26 +936,32 @@ const ExpenseTracker = () => {
                   </div>
                 </div>
                 <div className="space-y-4">
-                  {Object.entries(balances).map(([account, balance]) => (
-                    <div key={account} className="group relative bg-gradient-to-r from-gray-50 to-gray-100 hover:from-white hover:to-gray-50 border border-gray-200 rounded-2xl p-5 transition-all duration-300 hover:shadow-lg">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center space-x-3">
-                          <div className={`w-3 h-3 rounded-full ${balance >= 0 ? 'bg-green-400' : 'bg-red-400'}`}></div>
-                          <div>
-                            <span className="font-semibold text-gray-900">{account}</span>
-                            <div className="text-xs text-gray-500 mt-1">
-                              {balance >= 0 ? 'Active' : 'Credit Used'}
+                  {Object.entries(balances).length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">No accounts found. Connect to Google Sheets to load account balances.</p>
+                    </div>
+                  ) : (
+                    Object.entries(balances).map(([account, balance]) => (
+                      <div key={account} className="group relative bg-gradient-to-r from-gray-50 to-gray-100 hover:from-white hover:to-gray-50 border border-gray-200 rounded-2xl p-5 transition-all duration-300 hover:shadow-lg">
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center space-x-3">
+                            <div className={`w-3 h-3 rounded-full ${balance >= 0 ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                            <div>
+                              <span className="font-semibold text-gray-900">{account}</span>
+                              <div className="text-xs text-gray-500 mt-1">
+                                {balance >= 0 ? 'Active' : 'Credit Used'}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div className="text-right">
-                          <span className={`text-lg font-bold ${balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {balanceVisible ? `₹${Math.abs(balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '••••••'}
-                          </span>
+                          <div className="text-right">
+                            <span className={`text-lg font-bold ${balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {balanceVisible ? `₹${Math.abs(balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '••••••'}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -978,31 +977,37 @@ const ExpenseTracker = () => {
                   </div>
                 </div>
                 <div className="space-y-4">
-                  {topCategories.map(([category, amount], index) => {
-                    const percentage = currentMonthExpenses > 0 ? (amount / currentMonthExpenses) * 100 : 0;
-                    return (
-                      <div key={category} className="group">
-                        <div className="flex justify-between items-center mb-2">
-                          <div className="flex items-center space-x-3">
-                            <div className="text-lg font-bold text-gray-400">#{index + 1}</div>
-                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: categoryColors[category] }}></div>
-                            <span className="font-semibold text-gray-900">{category}</span>
+                  {topCategories.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">No expenses found for this month.</p>
+                    </div>
+                  ) : (
+                    topCategories.map(([category, amount], index) => {
+                      const percentage = currentMonthExpenses > 0 ? (amount / currentMonthExpenses) * 100 : 0;
+                      return (
+                        <div key={category} className="group">
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="flex items-center space-x-3">
+                              <div className="text-lg font-bold text-gray-400">#{index + 1}</div>
+                              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: categoryColors[category] }}></div>
+                              <span className="font-semibold text-gray-900">{category}</span>
+                            </div>
+                            <span className="font-bold text-gray-900">₹{amount.toLocaleString('en-IN')}</span>
                           </div>
-                          <span className="font-bold text-gray-900">₹{amount.toLocaleString('en-IN')}</span>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="h-2 rounded-full transition-all duration-500 group-hover:shadow-lg"
+                              style={{ 
+                                width: `${percentage}%`,
+                                backgroundColor: categoryColors[category]
+                              }}
+                            ></div>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">{percentage.toFixed(1)}% of expenses</div>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="h-2 rounded-full transition-all duration-500 group-hover:shadow-lg"
-                            style={{ 
-                              width: `${percentage}%`,
-                              backgroundColor: categoryColors[category]
-                            }}
-                          ></div>
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">{percentage.toFixed(1)}% of expenses</div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>
@@ -1022,39 +1027,49 @@ const ExpenseTracker = () => {
                   <PieChart className="w-6 h-6 text-white" />
                 </div>
               </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsPieChart>
-                      <Pie
-                        data={pieChartData}
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={120}
-                        fill="#8884d8"
-                        dataKey="value"
-                        label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      >
-                        {pieChartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => [`₹${value.toLocaleString('en-IN')}`, 'Amount']} />
-                    </RechartsPieChart>
-                  </ResponsiveContainer>
+              {pieChartData.length === 0 ? (
+                <div className="text-center py-16">
+                  <div className="mx-auto w-20 h-20 bg-gradient-to-r from-gray-200 to-gray-300 rounded-full flex items-center justify-center mb-6">
+                    <PieChart className="w-10 h-10 text-gray-400" />
+                  </div>
+                  <p className="text-gray-500 text-xl font-medium">No expense data available</p>
+                  <p className="text-gray-400 text-sm mt-2">Add some expenses to see the distribution</p>
                 </div>
-                <div className="space-y-4">
-                  {pieChartData.map((item, index) => (
-                    <div key={item.name} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: item.color }}></div>
-                        <span className="font-medium text-gray-900">{item.name}</span>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={pieChartData}
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={120}
+                          fill="#8884d8"
+                          dataKey="value"
+                          label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        >
+                          {pieChartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value) => [`₹${value.toLocaleString('en-IN')}`, 'Amount']} />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-4">
+                    {pieChartData.map((item, index) => (
+                      <div key={item.name} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-4 h-4 rounded-full" style={{ backgroundColor: item.color }}></div>
+                          <span className="font-medium text-gray-900">{item.name}</span>
+                        </div>
+                        <span className="font-bold text-gray-900">₹{item.value.toLocaleString('en-IN')}</span>
                       </div>
-                      <span className="font-bold text-gray-900">₹{item.value.toLocaleString('en-IN')}</span>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}
@@ -1552,7 +1567,7 @@ const ExpenseTracker = () => {
         </div>
       </div>
 
-      {/* Google Sheets Modal */}
+      {/* Simplified Google Sheets Modal - Auto-Connect */}
       <div className={`fixed inset-0 z-50 transition-all duration-300 ${showSyncModal ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
         <div className="absolute inset-0 bg-black/40 backdrop-blur-md" onClick={() => setShowSyncModal(false)}></div>
         <div className="flex items-center justify-center min-h-screen p-4">
@@ -1565,7 +1580,7 @@ const ExpenseTracker = () => {
                   </div>
                   <div>
                     <h2 className="text-xl font-bold text-gray-900">Google Sheets Sync</h2>
-                    <p className="text-gray-500">Connect your spreadsheet</p>
+                    <p className="text-gray-500">Automatic connection</p>
                   </div>
                 </div>
                 <button
@@ -1578,45 +1593,20 @@ const ExpenseTracker = () => {
               
               {!sheetsConfig.isConnected ? (
                 <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Spreadsheet ID</label>
-                    <input
-                      type="text"
-                      placeholder="Enter your Google Sheets ID"
-                      value={sheetsConfig.spreadsheetId}
-                      onChange={(e) => setSheetsConfig(prev => ({ ...prev, spreadsheetId: e.target.value }))}
-                      className="w-full px-4 py-3 bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Found in your Google Sheets URL</p>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">API Key</label>
-                    <input
-                      type="password"
-                      placeholder="Enter your Google API key"
-                      value={sheetsConfig.apiKey}
-                      onChange={(e) => setSheetsConfig(prev => ({ ...prev, apiKey: e.target.value }))}
-                      className="w-full px-4 py-3 bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">From Google Cloud Console</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">OAuth Client ID</label>
-                    <input
-                      type="text"
-                      placeholder="Enter your OAuth 2.0 Client ID"
-                      value={sheetsConfig.clientId}
-                      onChange={(e) => setSheetsConfig(prev => ({ ...prev, clientId: e.target.value }))}
-                      className="w-full px-4 py-3 bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">OAuth 2.0 Client ID from Google Cloud Console</p>
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                    <p className="text-sm text-blue-800 mb-3">
+                      <strong>Ready to Connect!</strong>
+                    </p>
+                    <ul className="text-sm text-blue-700 space-y-1">
+                      <li>• Spreadsheet ID: 1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg</li>
+                      <li>• API Key: Configured</li>
+                      <li>• OAuth Client ID: Configured</li>
+                    </ul>
                   </div>
                   
                   <button
-                    onClick={() => connectToGoogleSheets(sheetsConfig.spreadsheetId, sheetsConfig.apiKey, sheetsConfig.clientId)}
-                    disabled={!sheetsConfig.spreadsheetId || !sheetsConfig.apiKey || !sheetsConfig.clientId || isLoading}
+                    onClick={connectToGoogleSheets}
+                    disabled={isLoading}
                     className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-semibold transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoading ? (
@@ -1629,17 +1619,13 @@ const ExpenseTracker = () => {
                     )}
                   </button>
                   
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                    <p className="text-sm text-blue-800 mb-3">
-                      <strong>Setup Instructions:</strong>
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                    <p className="text-sm text-amber-800 mb-2">
+                      <strong>Note:</strong>
                     </p>
-                    <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
-                      <li>Create a Google Cloud project and enable Sheets API</li>
-                      <li>Create API key and OAuth 2.0 credentials</li>
-                      <li>Add your domain to authorized origins</li>
-                      <li>Create sheets: "Transactions" and "Data"</li>
-                      <li>In "Data" sheet, add accounts in column E with balances in column G</li>
-                    </ol>
+                    <p className="text-sm text-amber-700">
+                      You'll be prompted to sign in to Google and authorize access to your spreadsheet.
+                    </p>
                   </div>
                 </div>
               ) : (
@@ -1678,9 +1664,9 @@ const ExpenseTracker = () => {
                     <button
                       onClick={() => {
                         setSheetsConfig({ 
-                          spreadsheetId: '', 
-                          apiKey: '', 
-                          clientId: '', 
+                          spreadsheetId: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
+                          apiKey: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
+                          clientId: '130621204284-j2gk44qb30mvkd4pm7soav68nphtfkok.apps.googleusercontent.com',
                           isConnected: false, 
                           lastSync: null 
                         });
