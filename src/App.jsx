@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PlusCircle, BarChart3, CreditCard, PieChart, RefreshCw, CheckCircle, AlertTriangle, X } from 'lucide-react';
 
 import Header from './components/Header';
@@ -15,71 +15,66 @@ const App = () => {
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [error, setError] = useState(null);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   // Custom hooks
   const expenseTracker = useExpenseTracker();
   const googleSheets = useGoogleSheets();
 
-  // Enhanced sync data function that handles initial connection data
-  const syncData = useCallback(async (initialData = null) => {
-    if (!googleSheets.sheetsConfig.isConnected && !initialData) {
-      return; // Don't sync if not connected and no initial data
+  // Function to update app state with data
+  const updateAppState = (data) => {
+    if (!data) return;
+    
+    console.log('📊 Updating app state with data:', data);
+    
+    if (data.balances) {
+      expenseTracker.setBalances(data.balances);
     }
-
-    try {
-      let data = initialData;
-      
-      // If no initial data provided, do a manual sync
-      if (!data && googleSheets.sheetsConfig.isConnected) {
-        console.log('🔄 Performing manual sync...');
-        data = await googleSheets.manualSync();
-      }
-      
-      if (data) {
-        console.log('📊 Updating app state with data:', data);
-        
-        if (data.balances) {
-          expenseTracker.setBalances(data.balances);
-        }
-        
-        if (data.accounts) {
-          expenseTracker.setMasterData(prev => ({ 
-            ...prev, 
-            accounts: data.accounts 
-          }));
-        }
-        
-        if (data.transactions) {
-          expenseTracker.setTransactions(data.transactions);
-        }
-        
-        console.log('✅ App state updated successfully');
-      }
-    } catch (error) {
-      console.error('❌ Sync failed:', error);
-      setError('Failed to sync with Google Sheets');
+    
+    if (data.accounts) {
+      expenseTracker.setMasterData(prev => ({ 
+        ...prev, 
+        accounts: data.accounts 
+      }));
     }
-  }, [googleSheets.sheetsConfig.isConnected, googleSheets.manualSync, expenseTracker]);
+    
+    if (data.transactions) {
+      expenseTracker.setTransactions(data.transactions);
+    }
+    
+    setDataLoaded(true);
+    console.log('✅ App state updated successfully');
+  };
 
   // Handle connection success with immediate data
   useEffect(() => {
     // Check for data loaded during connection
-    if (window.expenseTrackerData) {
+    if (window.expenseTrackerData && !dataLoaded) {
       console.log('🎯 Found data from connection, using immediately...');
       const data = window.expenseTrackerData;
-      syncData(data);
+      updateAppState(data);
       // Clear the temporary storage
       delete window.expenseTrackerData;
     }
-  }, [syncData]);
+  }, [dataLoaded]);
 
-  // Only sync on connection changes (not on initial mount)
+  // Handle connection state changes
   useEffect(() => {
-    if (googleSheets.sheetsConfig.isConnected && !window.expenseTrackerData) {
-      console.log('🔄 Connection established, syncing data...');
-      syncData();
-    }
-  }, [googleSheets.sheetsConfig.isConnected, syncData]);
+    const handleConnectionChange = async () => {
+      if (googleSheets.sheetsConfig.isConnected && !dataLoaded && !window.expenseTrackerData) {
+        console.log('🔄 Connection established, syncing data...');
+        try {
+          const data = await googleSheets.manualSync();
+          updateAppState(data);
+        } catch (error) {
+          console.error('❌ Sync failed:', error);
+          setError('Failed to sync with Google Sheets');
+        }
+      }
+    };
+
+    handleConnectionChange();
+  }, [googleSheets.sheetsConfig.isConnected, dataLoaded, googleSheets.manualSync]);
 
   // Handle form submission
   const handleAddTransaction = async () => {
@@ -96,6 +91,18 @@ const App = () => {
   const handleEditTransaction = (transaction) => {
     expenseTracker.editTransaction(transaction);
     setIsFormVisible(true);
+  };
+
+  // Handle manual sync
+  const handleManualSync = async () => {
+    try {
+      console.log('🔄 Manual sync requested...');
+      const data = await googleSheets.manualSync();
+      updateAppState(data);
+    } catch (error) {
+      console.error('❌ Manual sync failed:', error);
+      setError('Failed to sync with Google Sheets');
+    }
   };
 
   // Navigation items
@@ -199,15 +206,25 @@ const App = () => {
             googleSheets.syncStatus === 'error' ? 'bg-red-50 border-red-200 text-red-800' :
             'bg-blue-50 border-blue-200 text-blue-800'
           }`}>
-            <div className="flex items-center space-x-3">
-              {googleSheets.syncStatus === 'syncing' && <RefreshCw className="w-5 h-5 animate-spin" />}
-              {googleSheets.syncStatus === 'success' && <CheckCircle className="w-5 h-5" />}
-              {googleSheets.syncStatus === 'error' && <AlertTriangle className="w-5 h-5" />}
-              <span className="font-medium">
-                {googleSheets.syncStatus === 'syncing' && 'Syncing with Google Sheets...'}
-                {googleSheets.syncStatus === 'success' && 'Successfully synced with Google Sheets!'}
-                {googleSheets.syncStatus === 'error' && 'Failed to sync with Google Sheets. Please try again.'}
-              </span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                {googleSheets.syncStatus === 'syncing' && <RefreshCw className="w-5 h-5 animate-spin" />}
+                {googleSheets.syncStatus === 'success' && <CheckCircle className="w-5 h-5" />}
+                {googleSheets.syncStatus === 'error' && <AlertTriangle className="w-5 h-5" />}
+                <span className="font-medium">
+                  {googleSheets.syncStatus === 'syncing' && 'Syncing with Google Sheets...'}
+                  {googleSheets.syncStatus === 'success' && 'Successfully synced with Google Sheets!'}
+                  {googleSheets.syncStatus === 'error' && 'Failed to sync with Google Sheets. Please try again.'}
+                </span>
+              </div>
+              {googleSheets.syncStatus === 'error' && (
+                <button
+                  onClick={handleManualSync}
+                  className="px-3 py-1 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 transition-colors"
+                >
+                  Retry
+                </button>
+              )}
             </div>
           </div>
         )}
