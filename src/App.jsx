@@ -1,17 +1,4 @@
-{/* Quick Add Button - Mobile Optimized */}
-      <div className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-50">
-        <button
-          onClick={() => setIsFormVisible(true)}
-          className="group relative bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white p-3 sm:p-4 rounded-full shadow-2xl hover:shadow-3xl transform hover:scale-110 transition-all duration-300 border-2 border-white/20"
-        >
-          <PlusCircle className="w-5 h-5 sm:w-6 sm:h-6" />
-          
-          {/* Mobile Label */}
-          <span className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-3 py-1 rounded-lg text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap sm:hidden">
-            Add Transaction
-          </span>
-        </button>
-      </div>import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PlusCircle, BarChart3, CreditCard, PieChart, RefreshCw, CheckCircle, AlertTriangle, X } from 'lucide-react';
 
 import Header from './components/Header';
@@ -34,37 +21,42 @@ const App = () => {
   const expenseTracker = useExpenseTracker();
   const googleSheets = useGoogleSheets();
 
+  // Function to update app state with data
+  const updateAppState = (data) => {
+    if (!data) return;
+    
+    console.log('📊 Updating app state with data:', data);
+    
+    if (data.balances) {
+      expenseTracker.setBalances(data.balances);
+    }
+    
+    if (data.accounts) {
+      expenseTracker.setMasterData(prev => ({ 
+        ...prev, 
+        accounts: data.accounts 
+      }));
+    }
+    
+    if (data.transactions) {
+      expenseTracker.setTransactions(data.transactions);
+    }
+    
+    setDataLoaded(true);
+    console.log('✅ App state updated successfully');
+  };
+
   // Handle connection success with immediate data
   useEffect(() => {
     // Check for data loaded during connection
     if (window.expenseTrackerData && !dataLoaded) {
       console.log('🎯 Found data from connection, using immediately...');
       const data = window.expenseTrackerData;
-      
-      console.log('📊 Updating app state with data:', data);
-      
-      if (data.balances) {
-        expenseTracker.setBalances(data.balances);
-      }
-      
-      if (data.accounts) {
-        expenseTracker.setMasterData(prev => ({ 
-          ...prev, 
-          accounts: data.accounts 
-        }));
-      }
-      
-      if (data.transactions) {
-        expenseTracker.setTransactions(data.transactions);
-      }
-      
-      setDataLoaded(true);
-      console.log('✅ App state updated successfully');
-      
+      updateAppState(data);
       // Clear the temporary storage
       delete window.expenseTrackerData;
     }
-  }, [dataLoaded, expenseTracker]);
+  }, [dataLoaded]);
 
   // Handle connection state changes
   useEffect(() => {
@@ -73,28 +65,7 @@ const App = () => {
         console.log('🔄 Connection established, syncing data...');
         try {
           const data = await googleSheets.manualSync();
-          
-          if (data) {
-            console.log('📊 Updating app state with synced data:', data);
-            
-            if (data.balances) {
-              expenseTracker.setBalances(data.balances);
-            }
-            
-            if (data.accounts) {
-              expenseTracker.setMasterData(prev => ({ 
-                ...prev, 
-                accounts: data.accounts 
-              }));
-            }
-            
-            if (data.transactions) {
-              expenseTracker.setTransactions(data.transactions);
-            }
-            
-            setDataLoaded(true);
-            console.log('✅ App state updated successfully');
-          }
+          updateAppState(data);
         } catch (error) {
           console.error('❌ Sync failed:', error);
           setError('Failed to sync with Google Sheets');
@@ -103,7 +74,7 @@ const App = () => {
     };
 
     handleConnectionChange();
-  }, [googleSheets.sheetsConfig.isConnected, googleSheets.manualSync, dataLoaded, expenseTracker]);
+  }, [googleSheets.sheetsConfig.isConnected, googleSheets.manualSync, dataLoaded]);
 
   // Handle form submission
   const handleAddTransaction = async () => {
@@ -127,28 +98,7 @@ const App = () => {
     try {
       console.log('🔄 Manual sync requested...');
       const data = await googleSheets.manualSync();
-      
-      if (data) {
-        console.log('📊 Updating app state with manual sync data:', data);
-        
-        if (data.balances) {
-          expenseTracker.setBalances(data.balances);
-        }
-        
-        if (data.accounts) {
-          expenseTracker.setMasterData(prev => ({ 
-            ...prev, 
-            accounts: data.accounts 
-          }));
-        }
-        
-        if (data.transactions) {
-          expenseTracker.setTransactions(data.transactions);
-        }
-        
-        setDataLoaded(true);
-        console.log('✅ App state updated successfully');
-      }
+      updateAppState(data);
     } catch (error) {
       console.error('❌ Manual sync failed:', error);
       setError('Failed to sync with Google Sheets');
@@ -197,6 +147,7 @@ const App = () => {
           }
         }
       `}</style>
+
       {/* Loading Overlay */}
       {googleSheets.isLoading && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
@@ -309,13 +260,18 @@ const App = () => {
         {navigationItems.find(item => item.id === currentView)?.component}
       </div>
 
-      {/* Quick Add Button */}
-      <div className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 z-50">
+      {/* Quick Add Button - Mobile Optimized */}
+      <div className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-50">
         <button
           onClick={() => setIsFormVisible(true)}
           className="group relative bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white p-3 sm:p-4 rounded-full shadow-2xl hover:shadow-3xl transform hover:scale-110 transition-all duration-300 border-2 border-white/20"
         >
           <PlusCircle className="w-5 h-5 sm:w-6 sm:h-6" />
+          
+          {/* Mobile Label */}
+          <span className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-3 py-1 rounded-lg text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap sm:hidden">
+            Add Transaction
+          </span>
         </button>
       </div>
 
