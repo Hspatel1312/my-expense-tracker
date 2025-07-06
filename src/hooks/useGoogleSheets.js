@@ -196,7 +196,7 @@ export const useGoogleSheets = () => {
       await initializeGoogleAPI();
       
       // Step 3: Authenticate and test using the exact method that worked
-      const results = await authenticateAndTest();
+      await authenticateAndTest();
       
       // Step 4: Update connection state
       console.log('✅ Connection successful! Updating state...');
