@@ -18,7 +18,7 @@ import { categoryColors } from '../constants/categories';
 import { parseCategory } from '../utils/helpers';
 
 const AnalyticsView = ({ expenseTracker }) => {
-  const { transactions, currentMonthExpenses } = expenseTracker;
+  const { transactions = [], currentMonthExpenses = 0 } = expenseTracker || {};
 
   // Category-wise expense distribution (current month)
   const pieChartData = useMemo(() => {
