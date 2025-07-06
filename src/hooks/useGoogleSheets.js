@@ -14,6 +14,36 @@ export const useGoogleSheets = () => {
   const [gapiLoaded, setGapiLoaded] = useState(false);
   const [gisLoaded, setGisLoaded] = useState(false);
 
+  // Store auth state in localStorage
+  const storeAuthState = useCallback((isConnected) => {
+    try {
+      localStorage.setItem('expense_tracker_auth', JSON.stringify({
+        isConnected,
+        timestamp: Date.now()
+      }));
+    } catch (error) {
+      console.warn('Could not store auth state:', error);
+    }
+  }, []);
+
+  // Get stored auth state
+  const getStoredAuthState = useCallback(() => {
+    try {
+      const stored = localStorage.getItem('expense_tracker_auth');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // Check if stored state is less than 1 hour old
+        const oneHour = 60 * 60 * 1000;
+        if (Date.now() - parsed.timestamp < oneHour) {
+          return parsed.isConnected;
+        }
+      }
+    } catch (error) {
+      console.warn('Could not retrieve auth state:', error);
+    }
+    return false;
+  }, []);
+
   // Load modern Google Identity Services
   const loadGoogleIdentityServices = useCallback(() => {
     return new Promise((resolve, reject) => {
@@ -94,6 +124,140 @@ export const useGoogleSheets = () => {
     }
   }, [loadGoogleAPI]);
 
+  // Enhanced check for existing authentication
+  const checkExistingAuth = useCallback(async () => {
+    try {
+      if (!gapiLoaded || !gisLoaded) return false;
+      
+      console.log('🔍 Checking for existing authentication...');
+      
+      // First check localStorage
+      const storedAuth = getStoredAuthState();
+      if (!storedAuth) {
+        console.log('ℹ️ No stored authentication found');
+        return false;
+      }
+      
+      // Check if we have a valid token
+      const currentToken = window.gapi.client.getToken();
+      if (currentToken && currentToken.access_token) {
+        console.log('✅ Found existing token, testing connection...');
+        
+        try {
+          // Test the connection with existing token
+          const testResponse = await window.gapi.client.sheets.spreadsheets.get({
+            spreadsheetId: SHEETS_CONFIG.spreadsheetId
+          });
+          
+          console.log('✅ Existing token is valid!');
+          
+          // Update connection state
+          setSheetsConfig(prev => ({
+            ...prev,
+            isConnected: true,
+            lastSync: new Date().toISOString()
+          }));
+          
+          // Load data immediately
+          const [balanceData, transactionData] = await Promise.all([
+            window.gapi.client.sheets.spreadsheets.values.get({
+              spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+              range: SHEETS_CONFIG.ACCOUNTS_RANGE
+            }),
+            window.gapi.client.sheets.spreadsheets.values.get({
+              spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+              range: SHEETS_CONFIG.TRANSACTIONS_RANGE
+            })
+          ]);
+          
+          // Process data with improved amount parsing
+          const balanceRows = balanceData.result.values || [];
+          const newBalances = {};
+          const accountsList = [];
+          
+          balanceRows.slice(1).forEach(row => {
+            if (row && row.length >= 3 && row[0]) {
+              const accountName = row[0].trim();
+              let endingBalance = 0;
+              if (row[2]) {
+                const cleanBalance = row[2].toString().replace(/[₹,\s]/g, '');
+                endingBalance = parseFloat(cleanBalance) || 0;
+              }
+              newBalances[accountName] = endingBalance;
+              accountsList.push(accountName);
+            }
+          });
+          
+          const transactionRows = transactionData.result.values || [];
+          const dataRows = transactionRows.slice(1);
+          
+          const transactions = dataRows
+            .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
+            .map((row, index) => {
+              // Improved amount parsing
+              let amount = 0;
+              if (row[1]) {
+                const cleanAmount = row[1].toString().replace(/[₹,\s]/g, '');
+                amount = parseFloat(cleanAmount) || 0;
+              }
+              
+              console.log('🔍 Parsing transaction:', {
+                rawAmount: row[1],
+                cleanAmount: amount,
+                description: row[3]
+              });
+              
+              return {
+                id: `sheet_${index}_${Date.now()}`,
+                date: formatDateForInput(row[0]),
+                amount: amount,
+                category: row[2] || '',
+                description: row[3] || '',
+                tag: row[4] || '',
+                account: row[5] || '',
+                type: row[8] || getTransactionType(row[2] || ''),
+                synced: true,
+                source: 'sheets',
+                sheetRow: index + 2
+              };
+            });
+          
+          console.log('📊 Auto-loaded data:', {
+            balances: newBalances,
+            accounts: accountsList,
+            transactions: transactions.length,
+            sampleTransaction: transactions[0]
+          });
+          
+          // Store successful auth
+          storeAuthState(true);
+          
+          return {
+            balances: newBalances,
+            accounts: accountsList,
+            transactions: transactions
+          };
+          
+        } catch (error) {
+          console.log('❌ Existing token is invalid:', error);
+          // Clear invalid token and stored auth
+          window.gapi.client.setToken(null);
+          storeAuthState(false);
+          return false;
+        }
+      }
+      
+      console.log('ℹ️ No valid token found');
+      storeAuthState(false);
+      return false;
+      
+    } catch (error) {
+      console.error('❌ Error checking existing auth:', error);
+      storeAuthState(false);
+      return false;
+    }
+  }, [gapiLoaded, gisLoaded, getStoredAuthState, storeAuthState]);
+
   // Authenticate and immediately test with the EXACT method that worked
   const authenticateAndTest = useCallback(() => {
     return new Promise((resolve, reject) => {
@@ -127,7 +291,7 @@ export const useGoogleSheets = () => {
                 
                 // Test 1: The exact call that worked manually
                 const testResponse = await window.gapi.client.sheets.spreadsheets.get({
-                  spreadsheetId: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg'
+                  spreadsheetId: SHEETS_CONFIG.spreadsheetId
                 });
                 
                 console.log('✅ SUCCESS with manual method!');
@@ -136,16 +300,16 @@ export const useGoogleSheets = () => {
                 // Test the data ranges that worked manually
                 console.log('🔍 Testing Transactions range...');
                 const transactionsTest = await window.gapi.client.sheets.spreadsheets.values.get({
-                  spreadsheetId: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
-                  range: 'Transactions!A:I'
+                  spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+                  range: SHEETS_CONFIG.TRANSACTIONS_RANGE
                 });
                 
                 console.log('✅ Transactions test:', transactionsTest.result.values?.length - 1, 'transactions');
                 
                 console.log('🔍 Testing Accounts range...');
                 const accountsTest = await window.gapi.client.sheets.spreadsheets.values.get({
-                  spreadsheetId: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
-                  range: 'Data!E:G'
+                  spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+                  range: SHEETS_CONFIG.ACCOUNTS_RANGE
                 });
                 
                 console.log('✅ Accounts test:', accountsTest.result.values?.length - 1, 'accounts');
@@ -157,12 +321,12 @@ export const useGoogleSheets = () => {
                 try {
                   const [balanceData, transactionData] = await Promise.all([
                     window.gapi.client.sheets.spreadsheets.values.get({
-                      spreadsheetId: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
-                      range: 'Data!E:G'
+                      spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+                      range: SHEETS_CONFIG.ACCOUNTS_RANGE
                     }),
                     window.gapi.client.sheets.spreadsheets.values.get({
-                      spreadsheetId: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
-                      range: 'Transactions!A:I'
+                      spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+                      range: SHEETS_CONFIG.TRANSACTIONS_RANGE
                     })
                   ]);
                   
@@ -229,9 +393,11 @@ export const useGoogleSheets = () => {
       // Step 3: Authenticate and test using the exact method that worked
       const connectionResult = await authenticateAndTest();
       
-      // Step 4: If we got data during connection, use it immediately
+      // Step 4: Process and return the loaded data
+      let returnData = { balances: {}, accounts: [], transactions: [] };
+      
       if (connectionResult.balanceData && connectionResult.transactionData) {
-        console.log('🎯 Using data loaded during connection...');
+        console.log('🎯 Processing data loaded during connection...');
         
         // Process balance data
         const balanceRows = connectionResult.balanceData.values || [];
@@ -241,23 +407,61 @@ export const useGoogleSheets = () => {
         balanceRows.slice(1).forEach(row => {
           if (row && row.length >= 3 && row[0]) {
             const accountName = row[0].trim();
-            const endingBalance = parseFloat(row[2]) || 0;
+            let endingBalance = 0;
+            if (row[2]) {
+              const cleanBalance = row[2].toString().replace(/[₹,\s]/g, '');
+              endingBalance = parseFloat(cleanBalance) || 0;
+            }
             newBalances[accountName] = endingBalance;
             accountsList.push(accountName);
           }
         });
         
-        console.log('💰 Processed balances:', newBalances);
+        // Process transaction data with improved amount parsing
+        const transactionRows = connectionResult.transactionData.values || [];
+        const dataRows = transactionRows.slice(1);
         
-        // Update the App state immediately with the loaded data
-        // We'll trigger this through the useEffect in App.js
-        window.expenseTrackerData = {
+        const transactions = dataRows
+          .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
+          .map((row, index) => {
+            // Better amount parsing - handle different formats
+            let amount = 0;
+            if (row[1]) {
+              // Remove currency symbols, commas, and parse
+              const cleanAmount = row[1].toString().replace(/[₹,\s]/g, '');
+              amount = parseFloat(cleanAmount) || 0;
+            }
+            
+            console.log('🔍 Processing transaction:', {
+              rawAmount: row[1],
+              cleanAmount: amount,
+              description: row[3]
+            });
+
+            return {
+              id: `sheet_${index}_${Date.now()}`,
+              date: formatDateForInput(row[0]),
+              amount: amount,
+              category: row[2] || '',
+              description: row[3] || '',
+              tag: row[4] || '',
+              account: row[5] || '',
+              type: row[8] || getTransactionType(row[2] || ''),
+              synced: true,
+              source: 'sheets',
+              sheetRow: index + 2
+            };
+          });
+        
+        returnData = {
           balances: newBalances,
           accounts: accountsList,
-          transactionCount: connectionResult.transactionData.values?.length - 1 || 0
+          transactions: transactions
         };
         
-        console.log('📊 Data stored for app use:', window.expenseTrackerData);
+        console.log('💰 Processed balances:', newBalances);
+        console.log('📊 Processed transactions:', transactions.length);
+        console.log('🔍 Sample transaction with amount:', transactions.find(t => t.amount > 0));
       }
       
       // Step 5: Update connection state
@@ -269,29 +473,25 @@ export const useGoogleSheets = () => {
       }));
       
       setSyncStatus('success');
-      console.log('🎉 Connection completed using proven method!');
       
-      // Check if we have data to return immediately
-      if (window.expenseTrackerData) {
-        console.log('🚀 Returning loaded data immediately');
-        const data = window.expenseTrackerData;
-        // Clear the temporary storage
-        delete window.expenseTrackerData;
-        return data;
-      }
+      // Store successful auth
+      storeAuthState(true);
       
-      return true;
+      console.log('🎉 Connection completed, returning data!');
+      
+      return returnData; // Return the processed data
       
     } catch (error) {
       console.error('❌ Connection failed:', error);
       setSyncStatus('error');
       setSheetsConfig(prev => ({ ...prev, isConnected: false }));
+      storeAuthState(false);
       throw error;
     } finally {
       setIsLoading(false);
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-  }, [loadGoogleAPI, loadGoogleIdentityServices, initializeGoogleAPI, authenticateAndTest]);
+  }, [loadGoogleAPI, loadGoogleIdentityServices, initializeGoogleAPI, authenticateAndTest, storeAuthState]);
 
   // Load account balances (ensure token is valid)
   const loadAccountBalances = useCallback(async () => {
@@ -316,7 +516,11 @@ export const useGoogleSheets = () => {
       rows.slice(1).forEach(row => {
         if (row && row.length >= 3 && row[0]) {
           const accountName = row[0].trim();
-          const endingBalance = parseFloat(row[2]) || 0;
+          let endingBalance = 0;
+          if (row[2]) {
+            const cleanBalance = row[2].toString().replace(/[₹,\s]/g, '');
+            endingBalance = parseFloat(cleanBalance) || 0;
+          }
           newBalances[accountName] = endingBalance;
           accountsList.push(accountName);
         }
@@ -350,36 +554,29 @@ export const useGoogleSheets = () => {
       const dataRows = rows.slice(1);
       
       const transactions = dataRows
-      .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
-      .map((row, index) => {
-        // Better amount parsing - handle different formats
-        let amount = 0;
-        if (row[1]) {
-          // Remove currency symbols, commas, and parse
-          const cleanAmount = row[1].toString().replace(/[₹,\s]/g, '');
-          amount = parseFloat(cleanAmount) || 0;
-        }
-        
-        console.log('🔍 Parsing transaction:', {
-          rawAmount: row[1],
-          cleanAmount: amount,
-          description: row[3]
+        .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
+        .map((row, index) => {
+          // Better amount parsing
+          let amount = 0;
+          if (row[1]) {
+            const cleanAmount = row[1].toString().replace(/[₹,\s]/g, '');
+            amount = parseFloat(cleanAmount) || 0;
+          }
+
+          return {
+            id: `sheet_${index}_${Date.now()}`,
+            date: formatDateForInput(row[0]),
+            amount: amount,
+            category: row[2] || '',
+            description: row[3] || '',
+            tag: row[4] || '',
+            account: row[5] || '',
+            type: row[8] || getTransactionType(row[2] || ''),
+            synced: true,
+            source: 'sheets',
+            sheetRow: index + 2
+          };
         });
-    
-        return {
-          id: `sheet_${index}_${Date.now()}`,
-          date: formatDateForInput(row[0]),
-          amount: amount,
-          category: row[2] || '',
-          description: row[3] || '',
-          tag: row[4] || '',
-          account: row[5] || '',
-          type: row[8] || getTransactionType(row[2] || ''),
-          synced: true,
-          source: 'sheets',
-          sheetRow: index + 2
-        };
-      });
 
       console.log('✅ Transactions loaded successfully:', transactions.length, 'transactions');
       return transactions;
@@ -457,13 +654,31 @@ export const useGoogleSheets = () => {
     }
   }, [sheetsConfig.isConnected, connectToGoogleSheets, loadAccountBalances, loadTransactions]);
 
-  // Initialize APIs on mount
+  // Initialize APIs and check for existing auth on mount
   useEffect(() => {
-    Promise.all([
-      loadGoogleAPI(),
-      loadGoogleIdentityServices()
-    ]).catch(console.error);
-  }, [loadGoogleAPI, loadGoogleIdentityServices]);
+    const initializeAndCheck = async () => {
+      try {
+        await Promise.all([
+          loadGoogleAPI(),
+          loadGoogleIdentityServices()
+        ]);
+        
+        await initializeGoogleAPI();
+        
+        // Check for existing authentication
+        const existingData = await checkExistingAuth();
+        if (existingData) {
+          // Store data for immediate use
+          window.expenseTrackerData = existingData;
+        }
+        
+      } catch (error) {
+        console.error('❌ Initialization failed:', error);
+      }
+    };
+    
+    initializeAndCheck();
+  }, [loadGoogleAPI, loadGoogleIdentityServices, initializeGoogleAPI, checkExistingAuth]);
 
   return {
     sheetsConfig,
