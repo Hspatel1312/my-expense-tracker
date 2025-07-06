@@ -170,10 +170,10 @@ const App = () => {
       {/* Loading Overlay */}
       {googleSheets.isLoading && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-white rounded-2xl p-8 shadow-2xl">
+          <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-2xl mx-4">
             <div className="flex items-center space-x-3">
               <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
-              <span className="text-lg font-medium">
+              <span className="text-base sm:text-lg font-medium">
                 {expenseTracker.editingTransaction ? 'Updating transaction...' : 'Syncing with Google Sheets...'}
               </span>
             </div>
@@ -183,14 +183,14 @@ const App = () => {
 
       {/* Error Banner */}
       {error && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full mx-4">
+        <div className="fixed top-4 left-4 right-4 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 z-50 max-w-md sm:w-full">
           <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl shadow-lg">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <AlertTriangle className="w-5 h-5" />
-                <span className="font-medium">{error}</span>
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                <span className="font-medium text-sm sm:text-base">{error}</span>
               </div>
-              <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800">
+              <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800 ml-2">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -212,20 +212,20 @@ const App = () => {
       {/* Navigation */}
       <div className="relative bg-white/50 backdrop-blur-xl border-b border-gray-200/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="flex space-x-8">
+          <nav className="flex space-x-4 sm:space-x-8 overflow-x-auto">
             {navigationItems.map((item) => {
               const IconComponent = item.icon;
               return (
                 <button
                   key={item.id}
                   onClick={() => setCurrentView(item.id)}
-                  className={`py-4 px-1 border-b-2 font-semibold text-sm transition-all duration-300 ${
+                  className={`py-4 px-2 sm:px-1 border-b-2 font-semibold text-xs sm:text-sm transition-all duration-300 whitespace-nowrap flex-shrink-0 ${
                     currentView === item.id
                       ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  <IconComponent className="inline w-5 h-5 mr-2" />
+                  <IconComponent className="inline w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
                   {item.label}
                   {item.count !== undefined && ` (${item.count})`}
                 </button>
@@ -235,19 +235,19 @@ const App = () => {
         </div>
       </div>
 
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Sync Status Banner */}
         {googleSheets.syncStatus !== 'idle' && (
-          <div className={`mb-6 p-4 rounded-xl border ${
+          <div className={`mb-4 sm:mb-6 p-3 sm:p-4 rounded-xl border text-sm sm:text-base ${
             googleSheets.syncStatus === 'success' ? 'bg-green-50 border-green-200 text-green-800' :
             googleSheets.syncStatus === 'error' ? 'bg-red-50 border-red-200 text-red-800' :
             'bg-blue-50 border-blue-200 text-blue-800'
           }`}>
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                {googleSheets.syncStatus === 'syncing' && <RefreshCw className="w-5 h-5 animate-spin" />}
-                {googleSheets.syncStatus === 'success' && <CheckCircle className="w-5 h-5" />}
-                {googleSheets.syncStatus === 'error' && <AlertTriangle className="w-5 h-5" />}
+              <div className="flex items-center space-x-2 sm:space-x-3">
+                {googleSheets.syncStatus === 'syncing' && <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5 animate-spin flex-shrink-0" />}
+                {googleSheets.syncStatus === 'success' && <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />}
+                {googleSheets.syncStatus === 'error' && <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />}
                 <span className="font-medium">
                   {googleSheets.syncStatus === 'syncing' && 'Syncing with Google Sheets...'}
                   {googleSheets.syncStatus === 'success' && 'Successfully synced with Google Sheets!'}
@@ -257,7 +257,7 @@ const App = () => {
               {googleSheets.syncStatus === 'error' && (
                 <button
                   onClick={handleManualSync}
-                  className="px-3 py-1 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 transition-colors"
+                  className="px-2 sm:px-3 py-1 bg-red-600 text-white rounded-lg text-xs sm:text-sm hover:bg-red-700 transition-colors flex-shrink-0"
                 >
                   Retry
                 </button>
@@ -271,12 +271,12 @@ const App = () => {
       </div>
 
       {/* Quick Add Button */}
-      <div className="fixed bottom-8 right-8 z-50">
+      <div className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 z-50">
         <button
           onClick={() => setIsFormVisible(true)}
-          className="group relative bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white p-4 rounded-full shadow-2xl hover:shadow-3xl transform hover:scale-110 transition-all duration-300 border-2 border-white/20"
+          className="group relative bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white p-3 sm:p-4 rounded-full shadow-2xl hover:shadow-3xl transform hover:scale-110 transition-all duration-300 border-2 border-white/20"
         >
-          <PlusCircle className="w-6 h-6" />
+          <PlusCircle className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
       </div>
 
