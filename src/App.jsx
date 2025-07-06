@@ -190,8 +190,8 @@ const App = () => {
         setShowSyncModal={setShowSyncModal}
       />
 
-      {/* Navigation - Mobile Optimized with Better Transparency */}
-      <div className="relative bg-white/90 backdrop-blur-xl border-b border-gray-200/50 sticky top-0 z-40 shadow-sm">
+      {/* Navigation - Fixed Sticky Navigation */}
+      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-xl border-b border-gray-200/60 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Mobile Navigation - Horizontal Scroll */}
           <nav className="flex space-x-1 sm:space-x-8 overflow-x-auto scrollbar-hide py-2 sm:py-0">
