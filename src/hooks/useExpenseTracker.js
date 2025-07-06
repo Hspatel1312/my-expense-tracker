@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { masterCategories, categoryColors } from '../constants/categories';
-import { getTransactionType, parseCategory } from '../utils/helpers';
+import { getTransactionType, parseCategory, validateForm } from '../utils/helpers';
 
 export const useExpenseTracker = () => {
   const [transactions, setTransactions] = useState([]);
@@ -44,44 +44,91 @@ export const useExpenseTracker = () => {
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
 
+  // Debug current month calculations
   const currentMonthTransactions = useMemo(() => {
-    return transactions.filter(t => {
+    const filtered = transactions.filter(t => {
       const date = new Date(t.date);
-      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+      const isCurrentMonth = date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+      
+      if (isCurrentMonth) {
+        console.log(`🔍 HOOK - Current month transaction: ${t.description} (${t.type}) - ₹${t.amount}`);
+      }
+      
+      return isCurrentMonth;
     });
+    
+    console.log(`🔍 HOOK - Current month transactions (${currentMonth + 1}/${currentYear}):`, filtered.length);
+    return filtered;
   }, [transactions, currentMonth, currentYear]);
 
   const currentMonthIncome = useMemo(() => {
-    return currentMonthTransactions
+    const income = currentMonthTransactions
       .filter(t => t.type === 'Income')
       .reduce((sum, t) => sum + t.amount, 0);
+    
+    console.log('🔍 HOOK - Current month income:', income);
+    return income;
   }, [currentMonthTransactions]);
 
   const currentMonthExpenses = useMemo(() => {
-    return currentMonthTransactions
+    const expenses = currentMonthTransactions
       .filter(t => t.type === 'Expense')
       .reduce((sum, t) => sum + t.amount, 0);
+    
+    console.log('🔍 HOOK - Current month expenses:', expenses);
+    return expenses;
   }, [currentMonthTransactions]);
 
   const savingsRate = useMemo(() => {
     if (currentMonthIncome === 0) return 0;
-    return ((currentMonthIncome - currentMonthExpenses) / currentMonthIncome) * 100;
+    const rate = ((currentMonthIncome - currentMonthExpenses) / currentMonthIncome) * 100;
+    console.log('🔍 HOOK - Savings rate:', rate);
+    return rate;
   }, [currentMonthIncome, currentMonthExpenses]);
 
+  // Fixed topCategories calculation with better debugging
   const topCategories = useMemo(() => {
-    const categoryTotals = {};
-    currentMonthTransactions
-      .filter(t => t.type === 'Expense')
-      .forEach(t => {
-        const categoryData = parseCategory(t.category);
-        const main = categoryData.main || 'Unknown';
-        categoryTotals[main] = (categoryTotals[main] || 0) + t.amount;
-      });
+    console.log('🔍 HOOK - Calculating top categories...');
     
-    return Object.entries(categoryTotals)
+    // Get current month expense transactions
+    const currentMonthExpenseTransactions = currentMonthTransactions.filter(t => t.type === 'Expense');
+    
+    console.log('🔍 HOOK - Current month expense transactions:', currentMonthExpenseTransactions.length);
+    
+    // Use current month expenses, or fall back to recent if none
+    let transactionsToUse = currentMonthExpenseTransactions;
+    
+    if (transactionsToUse.length === 0) {
+      console.log('🔍 HOOK - No current month expenses, using recent...');
+      // Get expenses from last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      transactionsToUse = transactions.filter(t => {
+        const date = new Date(t.date);
+        return t.type === 'Expense' && date >= thirtyDaysAgo;
+      });
+      
+      console.log('🔍 HOOK - Recent expenses (30 days):', transactionsToUse.length);
+    }
+    
+    const categoryTotals = {};
+    
+    transactionsToUse.forEach(t => {
+      const categoryData = parseCategory(t.category);
+      const main = categoryData.main || 'Unknown';
+      categoryTotals[main] = (categoryTotals[main] || 0) + t.amount;
+      
+      console.log(`🔍 HOOK - Adding ₹${t.amount} to "${main}" category (now: ₹${categoryTotals[main]})`);
+    });
+    
+    const result = Object.entries(categoryTotals)
       .sort(([,a], [,b]) => b - a)
       .slice(0, 5);
-  }, [currentMonthTransactions]);
+    
+    console.log('🔍 HOOK - Final top categories:', result);
+    return result;
+  }, [currentMonthTransactions, transactions]);
 
   const pieChartData = useMemo(() => {
     return topCategories.map(([category, amount]) => ({
@@ -140,22 +187,6 @@ export const useExpenseTracker = () => {
       tag: ''
     });
     setValidationErrors({});
-  };
-
-  // Validation function
-  const validateForm = (data) => {
-    const errors = {};
-    
-    if (!data.date) errors.date = 'Date is required';
-    if (!data.amount || parseFloat(data.amount) <= 0) errors.amount = 'Valid amount is required';
-    if (!data.category) errors.category = 'Category is required';
-    if (!data.description.trim()) errors.description = 'Description is required';
-    if (!data.account) errors.account = 'Account is required';
-    
-    return {
-      errors,
-      isValid: Object.keys(errors).length === 0
-    };
   };
 
   const addTransaction = async (addToSheets) => {
@@ -249,6 +280,7 @@ export const useExpenseTracker = () => {
     topCategories,
     pieChartData,
     filteredTransactions,
+    currentMonthTransactions, // Add this for debugging
     
     // Actions
     clearFilters,
