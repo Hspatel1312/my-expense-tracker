@@ -1,6 +1,24 @@
 export const getTransactionType = (category) => {
-  if (category.includes('Income')) return 'Income';
-  if (category.includes('Transfer')) return 'Transfer';
+  if (!category) return 'Expense'; // Default to Expense if no category
+  
+  const categoryLower = category.toLowerCase();
+  
+  // Check for income keywords
+  if (categoryLower.includes('income') || 
+      categoryLower.includes('salary') || 
+      categoryLower.includes('reload') ||
+      categoryLower.includes('refund')) {
+    return 'Income';
+  }
+  
+  // Check for transfer keywords
+  if (categoryLower.includes('transfer') || 
+      categoryLower.includes('withdrawal') ||
+      categoryLower.includes('deposit')) {
+    return 'Transfer';
+  }
+  
+  // Default to Expense for all other categories
   return 'Expense';
 };
 
