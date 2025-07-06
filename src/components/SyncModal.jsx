@@ -22,9 +22,9 @@ const SyncModal = ({
 
   return (
     <div className="fixed inset-0 z-50 transition-all duration-300 opacity-100 visible">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-md" onClick={onClose}></div>
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose}></div>
       <div className="flex items-center justify-center min-h-screen p-4">
-        <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-md transform transition-all duration-500 scale-100 translate-y-0 border border-white/20">
+        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md transform transition-all duration-500 scale-100 translate-y-0 border border-gray-300">
           <div className="p-8">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
