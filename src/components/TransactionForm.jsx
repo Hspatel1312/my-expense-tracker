@@ -24,25 +24,31 @@ const TransactionForm = ({
     resetForm
   } = expenseTracker;
 
-  // Prevent body scroll when modal is open
+  // Prevent body scroll when modal is open - Enhanced for mobile
   useEffect(() => {
     if (isVisible) {
-      // Store original body overflow
-      const originalOverflow = document.body.style.overflow;
-      const originalPosition = document.body.style.position;
+      // Get current scroll position
+      const scrollY = window.scrollY;
       
       // Prevent body scroll
-      document.body.style.overflow = 'hidden';
       document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.left = '0';
+      document.body.style.right = '0';
       document.body.style.width = '100%';
-      document.body.style.height = '100%';
+      document.body.style.overflow = 'hidden';
       
       return () => {
-        // Restore original body scroll
-        document.body.style.overflow = originalOverflow;
-        document.body.style.position = originalPosition;
+        // Restore body scroll
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.left = '';
+        document.body.style.right = '';
         document.body.style.width = '';
-        document.body.style.height = '';
+        document.body.style.overflow = '';
+        
+        // Restore scroll position
+        window.scrollTo(0, scrollY);
       };
     }
   }, [isVisible]);
@@ -90,29 +96,29 @@ const TransactionForm = ({
 
   return (
     <>
-      {/* Enhanced Modal Overlay */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Fixed Modal Overlay - Mobile Optimized */}
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
         {/* Backdrop */}
         <div 
           className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300" 
           onClick={handleClose}
         />
         
-        {/* Modal Container - Fixed positioning for mobile */}
-        <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-3xl shadow-2xl transform transition-all duration-500 scale-100 translate-y-0 border border-gray-200 overflow-hidden">
+        {/* Modal Container - Mobile: Full screen, Desktop: Centered */}
+        <div className="relative w-full h-full sm:w-full sm:max-w-2xl sm:h-auto sm:max-h-[90vh] bg-white sm:rounded-3xl shadow-2xl transform transition-all duration-500 scale-100 translate-y-0 border-t-4 sm:border-t-0 sm:border border-gray-200 flex flex-col">
           
-          {/* Modal Header - Fixed */}
-          <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl border-b border-gray-100 p-6 sm:p-8">
+          {/* Modal Header - Fixed at top */}
+          <div className="flex-shrink-0 bg-white sm:bg-white/95 sm:backdrop-blur-xl border-b border-gray-100 p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <div className="p-3 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 rounded-2xl shadow-lg">
-                  <Sparkles className="w-6 h-6 text-white" />
+                <div className="p-2 sm:p-3 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 rounded-xl sm:rounded-2xl shadow-lg">
+                  <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 bg-clip-text text-transparent">
+                  <h2 className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 bg-clip-text text-transparent">
                     {editingTransaction ? 'Edit Transaction' : 'Add Transaction'}
                   </h2>
-                  <p className="text-gray-500 text-sm">
+                  <p className="text-gray-500 text-xs sm:text-sm">
                     {googleSheets.sheetsConfig.isConnected ? 'Will sync to Google Sheets automatically' : 'Will be saved locally'}
                   </p>
                 </div>
@@ -121,17 +127,17 @@ const TransactionForm = ({
                 onClick={handleClose}
                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-all duration-200 hover:scale-110"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
           </div>
           
-          {/* Scrollable Content */}
-          <div className="overflow-y-auto max-h-[calc(90vh-120px)] scrollbar-hide">
-            <div className="p-6 sm:p-8 space-y-6">
+          {/* Scrollable Content Area - This is the key fix */}
+          <div className="flex-1 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 pb-24 sm:pb-6">
               
               {/* Form Fields Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 
                 {/* Date Field */}
                 <div className="space-y-2">
@@ -163,6 +169,7 @@ const TransactionForm = ({
                   </label>
                   <input
                     type="number"
+                    inputMode="decimal"
                     value={formData.amount}
                     onChange={(e) => setFormData({...formData, amount: e.target.value})}
                     className={`w-full px-4 py-3 bg-gray-50/80 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white transition-all duration-200 ${
@@ -329,19 +336,19 @@ const TransactionForm = ({
             </div>
           </div>
           
-          {/* Fixed Footer with Actions */}
-          <div className="sticky bottom-0 bg-white/95 backdrop-blur-xl border-t border-gray-100 p-6 sm:p-8">
+          {/* Fixed Footer with Actions - Mobile: Floating at bottom */}
+          <div className="flex-shrink-0 fixed sm:sticky bottom-0 left-0 right-0 sm:relative bg-white/95 backdrop-blur-xl border-t border-gray-200 p-4 sm:p-6 shadow-lg sm:shadow-none">
             <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4">
               <button
                 onClick={handleClose}
-                className="w-full sm:w-auto px-6 py-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all duration-200 font-medium"
+                className="w-full sm:w-auto px-6 py-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all duration-200 font-medium order-2 sm:order-1"
               >
                 Cancel
               </button>
               <button
                 onClick={onSubmit}
                 disabled={googleSheets.isLoading}
-                className="w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-white rounded-xl font-semibold transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                className="w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-white rounded-xl font-semibold transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none order-1 sm:order-2"
               >
                 {googleSheets.isLoading ? (
                   <div className="flex items-center justify-center space-x-2">
@@ -357,14 +364,38 @@ const TransactionForm = ({
         </div>
       </div>
 
-      {/* Custom Scrollbar Styles */}
+      {/* Custom Styles */}
       <style jsx>{`
-        .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
+        /* Ensure smooth scrolling on iOS */
+        .overscroll-contain {
+          overscroll-behavior: contain;
         }
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
+        
+        /* Custom scrollbar for webkit browsers */
+        .overflow-y-auto::-webkit-scrollbar {
+          width: 6px;
+        }
+        
+        .overflow-y-auto::-webkit-scrollbar-track {
+          background: #f1f1f1;
+          border-radius: 3px;
+        }
+        
+        .overflow-y-auto::-webkit-scrollbar-thumb {
+          background: #c1c1c1;
+          border-radius: 3px;
+        }
+        
+        .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+          background: #a8a8a8;
+        }
+        
+        /* Mobile specific adjustments */
+        @media (max-width: 640px) {
+          .modal-container {
+            height: 100vh;
+            height: 100dvh; /* Dynamic viewport height for mobile */
+          }
         }
       `}</style>
     </>
