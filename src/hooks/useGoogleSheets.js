@@ -76,14 +76,13 @@ export const useGoogleSheets = () => {
     });
   }, []);
 
-  // Initialize Google API (OAuth-only, no API key)
+  // Initialize Google API (OAuth-only)
   const initializeGoogleAPI = useCallback(async () => {
     try {
       console.log('🔧 Initializing Google API (OAuth-only mode)...');
       
       const gapi = await loadGoogleAPI();
       
-      // Initialize WITHOUT API key - we'll use OAuth for everything
       await gapi.client.init({
         discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4']
       });
@@ -100,7 +99,7 @@ export const useGoogleSheets = () => {
   const authenticateWithGoogleIdentity = useCallback(() => {
     return new Promise((resolve, reject) => {
       try {
-        console.log('🔐 Starting OAuth-only authentication...');
+        console.log('🔐 Starting OAuth authentication...');
         
         const client = window.google.accounts.oauth2.initTokenClient({
           client_id: SHEETS_CONFIG.clientId,
@@ -112,29 +111,23 @@ export const useGoogleSheets = () => {
               return;
             }
             
-            console.log('✅ OAuth token received');
-            console.log('🔑 Token details:', {
-              hasAccessToken: !!response.access_token,
-              tokenLength: response.access_token?.length,
-              scope: response.scope
-            });
+            console.log('✅ OAuth token received successfully');
             
             // Set the access token for API calls
             window.gapi.client.setToken({
               access_token: response.access_token
             });
             
-            console.log('🔑 Access token set for OAuth API calls');
+            console.log('🔑 Access token configured for API calls');
             resolve(response);
           },
           error_callback: (error) => {
-            console.error('❌ OAuth initialization error:', error);
-            reject(new Error(`OAuth initialization error: ${error}`));
+            console.error('❌ OAuth error callback:', error);
+            reject(new Error(`OAuth error: ${error}`));
           }
         });
         
         // Request access token
-        console.log('🚀 Requesting OAuth access token...');
         client.requestAccessToken();
         
       } catch (error) {
@@ -144,89 +137,84 @@ export const useGoogleSheets = () => {
     });
   }, []);
 
-  // Test spreadsheet access using OAuth token
+  // Test both spreadsheet ranges that we know work
   const testSpreadsheetAccess = useCallback(async () => {
     try {
-      console.log('📊 Testing spreadsheet access with OAuth...');
-      console.log('📋 Spreadsheet ID:', SHEETS_CONFIG.spreadsheetId);
+      console.log('📊 Testing spreadsheet access...');
       
-      // Verify we have a token
-      const currentToken = window.gapi.client.getToken();
-      console.log('🔍 Current token check:', {
-        hasToken: !!currentToken,
-        hasAccessToken: !!currentToken?.access_token,
-        tokenStart: currentToken?.access_token?.substring(0, 10) + '...'
-      });
-      
-      if (!currentToken || !currentToken.access_token) {
-        throw new Error('No valid OAuth token available');
-      }
-      
-      // Make the API call using OAuth token
-      const response = await window.gapi.client.sheets.spreadsheets.get({
+      // Test 1: Get spreadsheet metadata
+      console.log('🔍 Test 1: Getting spreadsheet metadata...');
+      const metadataResponse = await window.gapi.client.sheets.spreadsheets.get({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId
       });
       
-      console.log('✅ OAuth spreadsheet access successful!');
-      console.log('📊 Spreadsheet info:', {
-        title: response.result.properties.title,
-        sheetCount: response.result.sheets?.length,
-        locale: response.result.properties.locale
+      console.log('✅ Spreadsheet metadata:', {
+        title: metadataResponse.result.properties.title,
+        sheets: metadataResponse.result.sheets.map(s => s.properties.title)
       });
       
-      return response.result;
+      // Test 2: Get Transactions data (we know this works)
+      console.log('🔍 Test 2: Getting Transactions data...');
+      const transactionsResponse = await window.gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+        range: 'Transactions!A:I'
+      });
+      
+      const transactionCount = transactionsResponse.result.values?.length - 1 || 0;
+      console.log('✅ Transactions loaded:', transactionCount, 'transactions');
+      
+      // Test 3: Get Accounts data (we know this works)
+      console.log('🔍 Test 3: Getting Accounts data...');
+      const accountsResponse = await window.gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+        range: 'Data!E:G'
+      });
+      
+      const accountCount = accountsResponse.result.values?.length - 1 || 0;
+      console.log('✅ Accounts loaded:', accountCount, 'accounts');
+      
+      // All tests passed!
+      console.log('🎉 All spreadsheet access tests passed!');
+      return {
+        metadata: metadataResponse.result,
+        transactionCount,
+        accountCount
+      };
       
     } catch (error) {
-      console.error('❌ OAuth spreadsheet access failed:', error);
-      
-      // Detailed error analysis for OAuth context
-      if (error.status === 401) {
-        console.error('🔍 Error 401 - Unauthorized. OAuth token may be invalid or expired.');
-      } else if (error.status === 403) {
-        console.error('🔍 Error 403 - Forbidden. Check OAuth scope and spreadsheet permissions.');
-      } else if (error.status === 404) {
-        console.error('🔍 Error 404 - Not Found. Spreadsheet ID may be incorrect or inaccessible via OAuth.');
-      }
-      
-      console.error('📝 Full OAuth error details:', {
-        status: error.status,
-        statusText: error.statusText,
-        message: error.message,
-        result: error.result
-      });
-      
+      console.error('❌ Spreadsheet access test failed:', error);
       throw error;
     }
   }, []);
 
   // Main connection function
   const connectToGoogleSheets = useCallback(async () => {
-    console.log('🚀 Starting OAuth-only Google Sheets connection...');
+    console.log('🚀 Starting Google Sheets connection...');
     setSyncStatus('syncing');
     setIsLoading(true);
 
     try {
-      // Step 1: Load both Google APIs
+      // Step 1: Load APIs
       console.log('📚 Loading Google APIs...');
       await Promise.all([
         loadGoogleAPI(),
         loadGoogleIdentityServices()
       ]);
       
-      // Step 2: Initialize Google API client (OAuth-only)
-      console.log('🔧 Initializing Google API (OAuth-only)...');
+      // Step 2: Initialize API client
+      console.log('🔧 Initializing Google API...');
       await initializeGoogleAPI();
       
-      // Step 3: Authenticate using OAuth
-      console.log('🔐 Authenticating with OAuth...');
+      // Step 3: Authenticate
+      console.log('🔐 Authenticating...');
       await authenticateWithGoogleIdentity();
       
-      // Step 4: Test spreadsheet access using OAuth
-      await testSpreadsheetAccess();
+      // Step 4: Test access (we know this works from console test)
+      console.log('📊 Testing spreadsheet access...');
+      const testResults = await testSpreadsheetAccess();
       
-      console.log('🎉 OAuth-only connection fully successful!');
-      
-      // Update connection state
+      // Step 5: Update connection state
+      console.log('✅ Connection successful! Updating state...');
       setSheetsConfig(prev => ({
         ...prev,
         isConnected: true,
@@ -234,11 +222,14 @@ export const useGoogleSheets = () => {
       }));
       
       setSyncStatus('success');
+      console.log('🎉 Google Sheets connection completed successfully!');
+      console.log('📊 Connected to:', testResults.metadata.properties.title);
+      console.log('📈 Found:', testResults.transactionCount, 'transactions,', testResults.accountCount, 'accounts');
+      
       return true;
       
     } catch (error) {
-      console.error('❌ OAuth connection failed:', error.message);
-      
+      console.error('❌ Connection failed:', error);
       setSyncStatus('error');
       setSheetsConfig(prev => ({ ...prev, isConnected: false }));
       throw error;
@@ -248,10 +239,10 @@ export const useGoogleSheets = () => {
     }
   }, [loadGoogleAPI, loadGoogleIdentityServices, initializeGoogleAPI, authenticateWithGoogleIdentity, testSpreadsheetAccess]);
 
-  // Load account balances using OAuth
+  // Load account balances (we know this works)
   const loadAccountBalances = useCallback(async () => {
     try {
-      console.log('💰 Loading account balances with OAuth...');
+      console.log('💰 Loading account balances...');
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId,
         range: SHEETS_CONFIG.ACCOUNTS_RANGE
@@ -261,6 +252,7 @@ export const useGoogleSheets = () => {
       const newBalances = {};
       const accountsList = [];
 
+      // Process account data (skip header row)
       rows.slice(1).forEach(row => {
         if (row && row.length >= 3 && row[0]) {
           const accountName = row[0].trim();
@@ -270,25 +262,25 @@ export const useGoogleSheets = () => {
         }
       });
 
-      console.log('✅ Account balances loaded via OAuth:', newBalances);
+      console.log('✅ Account balances loaded:', newBalances);
       return { balances: newBalances, accounts: accountsList };
     } catch (error) {
-      console.error('❌ Failed to load account balances via OAuth:', error);
+      console.error('❌ Failed to load account balances:', error);
       return { balances: {}, accounts: [] };
     }
   }, []);
 
-  // Load transactions using OAuth
+  // Load transactions (we know this works)
   const loadTransactions = useCallback(async () => {
     try {
-      console.log('📋 Loading transactions with OAuth...');
+      console.log('📋 Loading transactions...');
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId,
         range: SHEETS_CONFIG.TRANSACTIONS_RANGE
       });
 
       const rows = response.result.values || [];
-      const dataRows = rows.slice(1);
+      const dataRows = rows.slice(1); // Skip header row
       
       const transactions = dataRows
         .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
@@ -306,24 +298,26 @@ export const useGoogleSheets = () => {
           sheetRow: index + 2
         }));
 
-      console.log('✅ Transactions loaded via OAuth:', transactions.length, 'transactions');
+      console.log('✅ Transactions loaded:', transactions.length, 'transactions');
       return transactions;
     } catch (error) {
-      console.error('❌ Failed to load transactions via OAuth:', error);
+      console.error('❌ Failed to load transactions:', error);
       return [];
     }
   }, []);
 
-  // Add transaction to sheets using OAuth
+  // Add transaction to sheets
   const addTransactionToSheets = useCallback(async (transaction) => {
     try {
-      console.log('➕ Adding transaction with OAuth...');
+      console.log('➕ Adding transaction to sheets...');
       
-      // Ensure we're authenticated
+      // Ensure we're connected
       if (!sheetsConfig.isConnected) {
+        console.log('🔗 Not connected, connecting first...');
         await connectToGoogleSheets();
       }
 
+      // Get current data to find next row
       const readResponse = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId,
         range: SHEETS_CONFIG.TRANSACTIONS_RANGE
@@ -331,6 +325,7 @@ export const useGoogleSheets = () => {
       
       const lastRow = (readResponse.result.values?.length || 1) + 1;
       
+      // Add the transaction
       await window.gapi.client.sheets.spreadsheets.values.append({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId,
         range: `Transactions!A${lastRow}`,
@@ -350,22 +345,24 @@ export const useGoogleSheets = () => {
         }
       });
 
-      console.log('✅ Transaction added via OAuth');
+      console.log('✅ Transaction added successfully');
       return true;
     } catch (error) {
-      console.error('❌ Failed to add transaction via OAuth:', error);
+      console.error('❌ Failed to add transaction:', error);
       return false;
     }
   }, [sheetsConfig.isConnected, connectToGoogleSheets]);
 
-  // Manual sync using OAuth
+  // Manual sync
   const manualSync = useCallback(async () => {
     if (!sheetsConfig.isConnected) {
+      console.log('🔗 Not connected, connecting first...');
       await connectToGoogleSheets();
     }
     
     setSyncStatus('syncing');
     try {
+      console.log('🔄 Starting manual sync...');
       const [balanceData, transactionData] = await Promise.all([
         loadAccountBalances(),
         loadTransactions()
@@ -377,10 +374,10 @@ export const useGoogleSheets = () => {
       }));
       
       setSyncStatus('success');
-      console.log('🔄 OAuth sync completed successfully');
+      console.log('✅ Manual sync completed successfully');
       return { ...balanceData, transactions: transactionData };
     } catch (error) {
-      console.error('❌ OAuth sync failed:', error);
+      console.error('❌ Manual sync failed:', error);
       setSyncStatus('error');
       throw error;
     } finally {
@@ -390,7 +387,7 @@ export const useGoogleSheets = () => {
 
   // Initialize APIs on mount
   useEffect(() => {
-    console.log('🏗️ Loading Google APIs for OAuth-only mode...');
+    console.log('🏗️ Loading Google APIs...');
     Promise.all([
       loadGoogleAPI(),
       loadGoogleIdentityServices()
