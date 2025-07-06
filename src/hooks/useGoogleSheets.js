@@ -254,10 +254,19 @@ export const useGoogleSheets = () => {
           .map((row, index) => {
             const amount = parseAmount(row[1]);
             
+            // Better transaction type detection
+            let transactionType = row[8] || ''; // Column I (Type)
+            if (!transactionType) {
+              transactionType = getTransactionType(row[2] || ''); // Fallback to category-based detection
+            }
+            
             console.log(`🔍 Transaction ${index + 1}:`, {
               rawAmount: row[1],
               parsedAmount: amount,
-              description: row[3]
+              description: row[3],
+              category: row[2],
+              detectedType: transactionType,
+              rawType: row[8]
             });
             
             return {
@@ -268,7 +277,7 @@ export const useGoogleSheets = () => {
               description: row[3] || '',
               tag: row[4] || '',
               account: row[5] || '',
-              type: row[8] || getTransactionType(row[2] || ''),
+              type: transactionType,
               synced: true,
               source: 'sheets',
               sheetRow: index + 2
