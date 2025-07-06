@@ -222,9 +222,17 @@ export const useGoogleSheets = () => {
     }
   }, [loadGoogleAPI, loadGoogleIdentityServices, initializeGoogleAPI, authenticateAndTest]);
 
-  // Load account balances (using working method)
+  // Load account balances (ensure token is valid)
   const loadAccountBalances = useCallback(async () => {
     try {
+      // Check if we have a valid token
+      const currentToken = window.gapi.client.getToken();
+      if (!currentToken || !currentToken.access_token) {
+        console.log('🔄 No valid token for accounts, reconnecting...');
+        await connectToGoogleSheets();
+      }
+
+      console.log('💰 Loading account balances...');
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId,
         range: SHEETS_CONFIG.ACCOUNTS_RANGE
@@ -243,16 +251,25 @@ export const useGoogleSheets = () => {
         }
       });
 
+      console.log('✅ Account balances loaded successfully:', newBalances);
       return { balances: newBalances, accounts: accountsList };
     } catch (error) {
-      console.error('Failed to load account balances:', error);
+      console.error('❌ Failed to load account balances:', error);
       return { balances: {}, accounts: [] };
     }
-  }, []);
+  }, [connectToGoogleSheets]);
 
-  // Load transactions (using working method)
+  // Load transactions (ensure token is valid)
   const loadTransactions = useCallback(async () => {
     try {
+      // Check if we have a valid token
+      const currentToken = window.gapi.client.getToken();
+      if (!currentToken || !currentToken.access_token) {
+        console.log('🔄 No valid token for transactions, reconnecting...');
+        await connectToGoogleSheets();
+      }
+
+      console.log('📋 Loading transactions...');
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId,
         range: SHEETS_CONFIG.TRANSACTIONS_RANGE
@@ -261,7 +278,7 @@ export const useGoogleSheets = () => {
       const rows = response.result.values || [];
       const dataRows = rows.slice(1);
       
-      return dataRows
+      const transactions = dataRows
         .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
         .map((row, index) => ({
           id: `sheet_${index}_${Date.now()}`,
@@ -276,11 +293,14 @@ export const useGoogleSheets = () => {
           source: 'sheets',
           sheetRow: index + 2
         }));
+
+      console.log('✅ Transactions loaded successfully:', transactions.length, 'transactions');
+      return transactions;
     } catch (error) {
-      console.error('Failed to load transactions:', error);
+      console.error('❌ Failed to load transactions:', error);
       return [];
     }
-  }, []);
+  }, [connectToGoogleSheets]);
 
   // Add transaction to sheets
   const addTransactionToSheets = useCallback(async (transaction) => {
