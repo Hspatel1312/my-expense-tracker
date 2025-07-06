@@ -13,13 +13,17 @@ export const useGoogleSheets = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [gapiLoaded, setGapiLoaded] = useState(false);
 
-  // Load Google API
+  // Load Google API with different approach
   const loadGoogleAPI = useCallback(() => {
     return new Promise((resolve, reject) => {
-      if (window.gapi && window.gapi.client) {
+      if (window.gapi && window.gapi.client && window.gapi.auth2) {
         resolve(window.gapi);
         return;
       }
+
+      // Remove any existing scripts
+      const existingScripts = document.querySelectorAll('script[src*="apis.google.com"]');
+      existingScripts.forEach(script => script.remove());
 
       const script = document.createElement('script');
       script.src = 'https://apis.google.com/js/api.js';
@@ -27,21 +31,23 @@ export const useGoogleSheets = () => {
       script.defer = true;
       
       script.onload = () => {
+        console.log('📜 Google API script loaded');
+        
         window.gapi.load('client:auth2', {
           callback: () => {
-            console.log('✅ Google API loaded successfully');
+            console.log('✅ Google API client and auth2 loaded successfully');
             setGapiLoaded(true);
             resolve(window.gapi);
           },
           onerror: (error) => {
-            console.error('❌ Failed to load Google API client:', error);
-            reject(new Error('Failed to load Google API client'));
+            console.error('❌ Failed to load Google API modules:', error);
+            reject(new Error('Failed to load Google API modules'));
           }
         });
       };
       
-      script.onerror = () => {
-        console.error('❌ Failed to load Google API script');
+      script.onerror = (error) => {
+        console.error('❌ Failed to load Google API script:', error);
         reject(new Error('Failed to load Google API script'));
       };
 
@@ -49,23 +55,18 @@ export const useGoogleSheets = () => {
     });
   }, []);
 
-  // Initialize Google API with config
+  // Initialize with more specific error handling
   const initializeGoogleAPI = useCallback(async () => {
     try {
-      console.log('🔧 Initializing Google API...');
+      console.log('🔧 Starting Google API initialization...');
       
-      // Check environment variables
-      if (!SHEETS_CONFIG.apiKey || !SHEETS_CONFIG.clientId || !SHEETS_CONFIG.spreadsheetId) {
-        console.error('❌ Missing Google API configuration:', {
-          apiKey: SHEETS_CONFIG.apiKey ? 'Set' : 'Missing',
-          clientId: SHEETS_CONFIG.clientId ? 'Set' : 'Missing',
-          spreadsheetId: SHEETS_CONFIG.spreadsheetId ? 'Set' : 'Missing'
-        });
-        throw new Error('Missing Google API configuration. Check environment variables.');
-      }
-
       const gapi = await loadGoogleAPI();
       
+      console.log('🔑 Initializing with credentials...');
+      console.log('API Key length:', SHEETS_CONFIG.apiKey?.length);
+      console.log('Client ID length:', SHEETS_CONFIG.clientId?.length);
+      
+      // Initialize client
       await gapi.client.init({
         apiKey: SHEETS_CONFIG.apiKey,
         clientId: SHEETS_CONFIG.clientId,
@@ -73,75 +74,97 @@ export const useGoogleSheets = () => {
         scope: 'https://www.googleapis.com/auth/spreadsheets'
       });
 
-      console.log('✅ Google API initialized successfully');
+      console.log('✅ Google API client initialized');
+      
+      // Check auth instance
+      const authInstance = gapi.auth2.getAuthInstance();
+      if (!authInstance) {
+        throw new Error('Auth instance not created');
+      }
+      
+      console.log('✅ Auth instance available');
       return gapi;
+      
     } catch (error) {
-      console.error('❌ Failed to initialize Google API:', error);
+      console.error('❌ Google API initialization failed:', error);
+      console.error('Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }, [loadGoogleAPI]);
 
-  // Main connection function
+  // Simplified connection function
   const connectToGoogleSheets = useCallback(async () => {
-    console.log('🚀 Starting Google Sheets connection...');
+    console.log('🚀 Starting connection attempt...');
     setSyncStatus('syncing');
     setIsLoading(true);
 
     try {
-      // Step 1: Initialize API
+      // Wait a moment to ensure page is fully loaded
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       await initializeGoogleAPI();
-      console.log('✅ Step 1: API initialized');
-
-      // Step 2: Get auth instance
+      
+      // Get fresh auth instance
       const authInstance = window.gapi.auth2.getAuthInstance();
-      if (!authInstance) {
-        throw new Error('Auth instance not available');
-      }
-      console.log('✅ Step 2: Auth instance obtained');
-
-      // Step 3: Check if already signed in
-      let isSignedIn = authInstance.isSignedIn.get();
-      console.log('🔍 Current sign-in status:', isSignedIn);
-
-      // Step 4: Sign in if needed
+      
+      console.log('🔐 Checking authentication status...');
+      const isSignedIn = authInstance.isSignedIn.get();
+      console.log('Current auth status:', isSignedIn);
+      
       if (!isSignedIn) {
-        console.log('🔐 Prompting for sign-in...');
-        await authInstance.signIn();
-        isSignedIn = authInstance.isSignedIn.get();
-        console.log('✅ Step 4: Sign-in completed:', isSignedIn);
+        console.log('🔐 Starting sign-in process...');
+        
+        // Try silent sign-in first
+        try {
+          await authInstance.signIn({ prompt: 'none' });
+          console.log('✅ Silent sign-in successful');
+        } catch (silentError) {
+          console.log('ℹ️ Silent sign-in failed, trying interactive sign-in...');
+          await authInstance.signIn();
+          console.log('✅ Interactive sign-in successful');
+        }
       }
-
-      if (!isSignedIn) {
-        throw new Error('Sign-in failed or cancelled');
+      
+      // Verify we're now signed in
+      if (!authInstance.isSignedIn.get()) {
+        throw new Error('Sign-in failed or was cancelled');
       }
-
-      // Step 5: Test spreadsheet access
+      
       console.log('📊 Testing spreadsheet access...');
       const response = await window.gapi.client.sheets.spreadsheets.get({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId
       });
       
-      console.log('✅ Step 5: Connected to spreadsheet:', response.result.properties.title);
-
-      // Step 6: Update connection state
+      console.log('✅ Successfully connected to:', response.result.properties.title);
+      
+      // Update state
       setSheetsConfig(prev => ({
         ...prev,
         isConnected: true,
         lastSync: new Date().toISOString()
       }));
-
-      setSyncStatus('success');
-      console.log('🎉 Connection successful!');
       
+      setSyncStatus('success');
       return true;
+      
     } catch (error) {
       console.error('❌ Connection failed:', error);
+      console.error('Error type:', typeof error);
+      console.error('Error properties:', Object.keys(error));
+      
+      if (error.status) {
+        console.error('HTTP Status:', error.status);
+        console.error('HTTP Status Text:', error.statusText);
+      }
+      
       setSyncStatus('error');
-      setSheetsConfig(prev => ({
-        ...prev,
-        isConnected: false
-      }));
+      setSheetsConfig(prev => ({ ...prev, isConnected: false }));
       throw error;
+      
     } finally {
       setIsLoading(false);
       setTimeout(() => setSyncStatus('idle'), 3000);
@@ -151,7 +174,6 @@ export const useGoogleSheets = () => {
   // Load account balances
   const loadAccountBalances = useCallback(async () => {
     try {
-      console.log('💰 Loading account balances...');
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId,
         range: SHEETS_CONFIG.ACCOUNTS_RANGE
@@ -165,16 +187,14 @@ export const useGoogleSheets = () => {
         if (row && row.length >= 3 && row[0]) {
           const accountName = row[0].trim();
           const endingBalance = parseFloat(row[2]) || 0;
-          
           newBalances[accountName] = endingBalance;
           accountsList.push(accountName);
         }
       });
 
-      console.log('✅ Loaded balances:', newBalances);
       return { balances: newBalances, accounts: accountsList };
     } catch (error) {
-      console.error('❌ Failed to load account balances:', error);
+      console.error('Failed to load account balances:', error);
       return { balances: {}, accounts: [] };
     }
   }, []);
@@ -182,7 +202,6 @@ export const useGoogleSheets = () => {
   // Load transactions
   const loadTransactions = useCallback(async () => {
     try {
-      console.log('📋 Loading transactions...');
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId,
         range: SHEETS_CONFIG.TRANSACTIONS_RANGE
@@ -191,7 +210,7 @@ export const useGoogleSheets = () => {
       const rows = response.result.values || [];
       const dataRows = rows.slice(1);
       
-      const transactions = dataRows
+      return dataRows
         .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
         .map((row, index) => ({
           id: `sheet_${index}_${Date.now()}`,
@@ -206,11 +225,8 @@ export const useGoogleSheets = () => {
           source: 'sheets',
           sheetRow: index + 2
         }));
-
-      console.log('✅ Loaded transactions:', transactions.length);
-      return transactions;
     } catch (error) {
-      console.error('❌ Failed to load transactions:', error);
+      console.error('Failed to load transactions:', error);
       return [];
     }
   }, []);
@@ -218,12 +234,7 @@ export const useGoogleSheets = () => {
   // Add transaction to sheets
   const addTransactionToSheets = useCallback(async (transaction) => {
     try {
-      console.log('➕ Adding transaction to sheets:', transaction);
-      
-      // Ensure we're authenticated first
-      const authInstance = window.gapi.auth2.getAuthInstance();
-      if (!authInstance || !authInstance.isSignedIn.get()) {
-        console.log('🔐 Not authenticated, connecting first...');
+      if (!sheetsConfig.isConnected) {
         await connectToGoogleSheets();
       }
 
@@ -253,18 +264,16 @@ export const useGoogleSheets = () => {
         }
       });
 
-      console.log('✅ Transaction added successfully');
       return true;
     } catch (error) {
-      console.error('❌ Failed to add transaction:', error);
+      console.error('Failed to add transaction:', error);
       return false;
     }
-  }, [connectToGoogleSheets]);
+  }, [sheetsConfig.isConnected, connectToGoogleSheets]);
 
-  // Manual sync function
+  // Manual sync
   const manualSync = useCallback(async () => {
     if (!sheetsConfig.isConnected) {
-      console.log('🔗 Not connected, connecting first...');
       await connectToGoogleSheets();
     }
     
@@ -281,10 +290,8 @@ export const useGoogleSheets = () => {
       }));
       
       setSyncStatus('success');
-      console.log('🔄 Sync completed successfully');
       return { ...balanceData, transactions: transactionData };
     } catch (error) {
-      console.error('❌ Sync failed:', error);
       setSyncStatus('error');
       throw error;
     } finally {
