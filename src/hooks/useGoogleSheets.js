@@ -1,4 +1,35 @@
-import { useState, useEffect, useCallback } from 'react';
+// Process account balance data - scan all rows
+        const balanceRows = balanceData.result.values || [];
+        const newBalances = {};
+        const accountsList = [];
+        
+        console.log('🔍 Auth check - Scanning', balanceRows.length, 'rows for accounts...');
+        
+        // Scan all rows for account names in column E
+        balanceRows.forEach((row, index) => {
+          if (row && row[0]) { // Column E has a value
+            const accountName = row[0].toString().trim();
+            
+            // Skip header rows and empty values
+            if (accountName && 
+                accountName !== 'Accounts' && 
+                accountName !== 'Account' &&
+                accountName !== '' &&
+                !accountName.toLowerCase().includes('balance')) {
+              
+              // Get ending balance from column G (index 2), default to 0 if empty
+              let endingBalance = 0;
+              if (row[2]) {
+                endingBalance = parseAmount(row[2]);
+              }
+              
+              console.log(`🔍 Auth check - Found account: "${accountName}" with balance: ${endingBalance}`);
+              
+              newBalances[accountName] = endingBalance;
+              accountsList.push(accountName);
+            }
+          }
+        });import { useState, useEffect, useCallback } from 'react';
 import { SHEETS_CONFIG } from '../constants/config';
 import { formatDateForInput, getTransactionType } from '../utils/helpers';
 
@@ -14,7 +45,7 @@ export const useGoogleSheets = () => {
   const [gapiLoaded, setGapiLoaded] = useState(false);
   const [gisLoaded, setGisLoaded] = useState(false);
 
-  // Simple but robust amount parser for number-only format
+  // Robust amount parser for Indian Rupee format (₹1,200.00) and plain numbers
   const parseAmount = useCallback((value) => {
     if (!value) return 0;
     
@@ -30,7 +61,20 @@ export const useGoogleSheets = () => {
     let cleanValue = value.toString().trim();
     console.log('🔍 String value:', cleanValue);
     
-    // For number-only format, just parse as float
+    // Handle Indian Rupee format: ₹1,200.00 or ₹12,00,000
+    cleanValue = cleanValue
+      .replace(/^₹\s*/i, '') // Remove ₹ prefix
+      .replace(/[,\s]/g, '') // Remove commas and spaces
+      .replace(/[^\d.-]/g, '') // Keep only digits, dots, and minus
+      .trim();
+    
+    console.log('🔍 Cleaned value:', cleanValue);
+    
+    if (cleanValue === '' || cleanValue === '-') {
+      console.log('⚠️ Empty after cleaning');
+      return 0;
+    }
+    
     const parsed = parseFloat(cleanValue);
     console.log('🔍 Parsed result:', parsed, 'isNaN:', isNaN(parsed));
     
@@ -192,7 +236,7 @@ export const useGoogleSheets = () => {
         const [balanceData, transactionData] = await Promise.all([
           window.gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-            range: SHEETS_CONFIG.ACCOUNTS_RANGE
+            range: 'Data!E:G' // Full columns for accounts
           }),
           window.gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: SHEETS_CONFIG.spreadsheetId,
@@ -338,7 +382,7 @@ export const useGoogleSheets = () => {
                   const [balanceData, transactionData] = await Promise.all([
                     window.gapi.client.sheets.spreadsheets.values.get({
                       spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-                      range: SHEETS_CONFIG.ACCOUNTS_RANGE
+                      range: 'Data!E:G' // Full columns for accounts
                     }),
                     window.gapi.client.sheets.spreadsheets.values.get({
                       spreadsheetId: SHEETS_CONFIG.spreadsheetId,
@@ -415,17 +459,36 @@ export const useGoogleSheets = () => {
       if (connectionResult.balanceData && connectionResult.transactionData) {
         console.log('🎯 Processing data loaded during connection...');
         
-        // Process balance data
+        // Process balance data with full column scan
         const balanceRows = connectionResult.balanceData.values || [];
         const newBalances = {};
         const accountsList = [];
         
-        balanceRows.slice(1).forEach(row => {
-          if (row && row.length >= 3 && row[0]) {
-            const accountName = row[0].trim();
-            const endingBalance = parseAmount(row[2]);
-            newBalances[accountName] = endingBalance;
-            accountsList.push(accountName);
+        console.log('🔍 Scanning', balanceRows.length, 'rows for accounts in connection...');
+        
+        // Scan all rows for account names in column E
+        balanceRows.forEach((row, index) => {
+          if (row && row[0]) { // Column E has a value
+            const accountName = row[0].toString().trim();
+            
+            // Skip header rows and empty values
+            if (accountName && 
+                accountName !== 'Accounts' && 
+                accountName !== 'Account' &&
+                accountName !== '' &&
+                !accountName.toLowerCase().includes('balance')) {
+              
+              // Get ending balance from column G (index 2), default to 0 if empty
+              let endingBalance = 0;
+              if (row[2]) {
+                endingBalance = parseAmount(row[2]);
+              }
+              
+              console.log(`🔍 Connection - Found account: "${accountName}" with balance: ${endingBalance}`);
+              
+              newBalances[accountName] = endingBalance;
+              accountsList.push(accountName);
+            }
           }
         });
         
@@ -495,7 +558,7 @@ export const useGoogleSheets = () => {
     }
   }, [loadGoogleAPI, loadGoogleIdentityServices, initializeGoogleAPI, authenticateAndTest, parseAmount]);
 
-  // Load account balances (ensure token is valid)
+  // Load account balances - scan full E:G columns
   const loadAccountBalances = useCallback(async () => {
     try {
       // Check if we have a valid token
@@ -505,22 +568,41 @@ export const useGoogleSheets = () => {
         await connectToGoogleSheets();
       }
 
-      console.log('💰 Loading account balances...');
+      console.log('💰 Loading account balances from full E:G range...');
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-        range: SHEETS_CONFIG.ACCOUNTS_RANGE
+        range: 'Data!E:G' // Full columns
       });
 
       const rows = response.result.values || [];
       const newBalances = {};
       const accountsList = [];
 
-      rows.slice(1).forEach(row => {
-        if (row && row.length >= 3 && row[0]) {
-          const accountName = row[0].trim();
-          const endingBalance = parseAmount(row[2]);
-          newBalances[accountName] = endingBalance;
-          accountsList.push(accountName);
+      console.log('🔍 Scanning', rows.length, 'rows for accounts...');
+
+      // Scan all rows for account names in column E
+      rows.forEach((row, index) => {
+        if (row && row[0]) { // Column E has a value
+          const accountName = row[0].toString().trim();
+          
+          // Skip header rows and empty values
+          if (accountName && 
+              accountName !== 'Accounts' && 
+              accountName !== 'Account' &&
+              accountName !== '' &&
+              !accountName.toLowerCase().includes('balance')) {
+            
+            // Get ending balance from column G (index 2), default to 0 if empty
+            let endingBalance = 0;
+            if (row[2]) {
+              endingBalance = parseAmount(row[2]);
+            }
+            
+            console.log(`🔍 Found account: "${accountName}" with balance: ${endingBalance}`);
+            
+            newBalances[accountName] = endingBalance;
+            accountsList.push(accountName);
+          }
         }
       });
 
