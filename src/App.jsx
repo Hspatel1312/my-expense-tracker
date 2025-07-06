@@ -21,42 +21,37 @@ const App = () => {
   const expenseTracker = useExpenseTracker();
   const googleSheets = useGoogleSheets();
 
-  // Function to update app state with data
-  const updateAppState = (data) => {
-    if (!data) return;
-    
-    console.log('📊 Updating app state with data:', data);
-    
-    if (data.balances) {
-      expenseTracker.setBalances(data.balances);
-    }
-    
-    if (data.accounts) {
-      expenseTracker.setMasterData(prev => ({ 
-        ...prev, 
-        accounts: data.accounts 
-      }));
-    }
-    
-    if (data.transactions) {
-      expenseTracker.setTransactions(data.transactions);
-    }
-    
-    setDataLoaded(true);
-    console.log('✅ App state updated successfully');
-  };
-
   // Handle connection success with immediate data
   useEffect(() => {
     // Check for data loaded during connection
     if (window.expenseTrackerData && !dataLoaded) {
       console.log('🎯 Found data from connection, using immediately...');
       const data = window.expenseTrackerData;
-      updateAppState(data);
+      
+      console.log('📊 Updating app state with data:', data);
+      
+      if (data.balances) {
+        expenseTracker.setBalances(data.balances);
+      }
+      
+      if (data.accounts) {
+        expenseTracker.setMasterData(prev => ({ 
+          ...prev, 
+          accounts: data.accounts 
+        }));
+      }
+      
+      if (data.transactions) {
+        expenseTracker.setTransactions(data.transactions);
+      }
+      
+      setDataLoaded(true);
+      console.log('✅ App state updated successfully');
+      
       // Clear the temporary storage
       delete window.expenseTrackerData;
     }
-  }, [dataLoaded]);
+  }, [dataLoaded, expenseTracker]);
 
   // Handle connection state changes
   useEffect(() => {
@@ -65,7 +60,28 @@ const App = () => {
         console.log('🔄 Connection established, syncing data...');
         try {
           const data = await googleSheets.manualSync();
-          updateAppState(data);
+          
+          if (data) {
+            console.log('📊 Updating app state with synced data:', data);
+            
+            if (data.balances) {
+              expenseTracker.setBalances(data.balances);
+            }
+            
+            if (data.accounts) {
+              expenseTracker.setMasterData(prev => ({ 
+                ...prev, 
+                accounts: data.accounts 
+              }));
+            }
+            
+            if (data.transactions) {
+              expenseTracker.setTransactions(data.transactions);
+            }
+            
+            setDataLoaded(true);
+            console.log('✅ App state updated successfully');
+          }
         } catch (error) {
           console.error('❌ Sync failed:', error);
           setError('Failed to sync with Google Sheets');
@@ -74,7 +90,7 @@ const App = () => {
     };
 
     handleConnectionChange();
-  }, [googleSheets.sheetsConfig.isConnected, dataLoaded, googleSheets.manualSync]);
+  }, [googleSheets.sheetsConfig.isConnected, googleSheets.manualSync, dataLoaded, expenseTracker]);
 
   // Handle form submission
   const handleAddTransaction = async () => {
@@ -98,7 +114,28 @@ const App = () => {
     try {
       console.log('🔄 Manual sync requested...');
       const data = await googleSheets.manualSync();
-      updateAppState(data);
+      
+      if (data) {
+        console.log('📊 Updating app state with manual sync data:', data);
+        
+        if (data.balances) {
+          expenseTracker.setBalances(data.balances);
+        }
+        
+        if (data.accounts) {
+          expenseTracker.setMasterData(prev => ({ 
+            ...prev, 
+            accounts: data.accounts 
+          }));
+        }
+        
+        if (data.transactions) {
+          expenseTracker.setTransactions(data.transactions);
+        }
+        
+        setDataLoaded(true);
+        console.log('✅ App state updated successfully');
+      }
     } catch (error) {
       console.error('❌ Manual sync failed:', error);
       setError('Failed to sync with Google Sheets');
