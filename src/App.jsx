@@ -154,7 +154,7 @@ const App = () => {
       id: 'analytics',
       label: 'Analytics',
       icon: PieChart,
-      component: <AnalyticsView pieChartData={expenseTracker.pieChartData} />
+      component: <AnalyticsView expenseTracker={expenseTracker} />
     },
     {
       id: 'transactions',
