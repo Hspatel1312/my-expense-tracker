@@ -165,6 +165,7 @@ const AnalyticsView = ({ expenseTracker }) => {
 
   return (
     <div className="space-y-8">
+      {/* Current Month Expense Distribution */}
       {/* Debug Info - Remove this after fixing */}
       <DebugInfo transactions={transactions} />
       
