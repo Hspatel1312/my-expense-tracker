@@ -20,6 +20,31 @@ import { parseCategory } from '../utils/helpers';
 const AnalyticsView = ({ expenseTracker }) => {
   const { transactions = [], currentMonthExpenses = 0 } = expenseTracker || {};
 
+  // Debug component to check transaction data
+  const DebugInfo = ({ transactions }) => {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    
+    const expenses = transactions?.filter(t => t.type === 'Expense') || [];
+    const currentMonthExpenses = expenses.filter(t => {
+      const date = new Date(t.date);
+      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+    });
+    
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg mb-4">
+        <h4 className="font-bold text-yellow-800 mb-2">Debug Info:</h4>
+        <div className="text-sm space-y-1">
+          <p>Total transactions: {transactions?.length || 0}</p>
+          <p>Total expenses: {expenses.length}</p>
+          <p>Current month ({currentMonth + 1}/{currentYear}) expenses: {currentMonthExpenses.length}</p>
+          <p>Sample expense: {expenses[0] ? JSON.stringify(expenses[0]) : 'None'}</p>
+          <p>Sample current month expense: {currentMonthExpenses[0] ? JSON.stringify(currentMonthExpenses[0]) : 'None'}</p>
+        </div>
+      </div>
+    );
+  };
+
   // Category-wise expense distribution (current month)
   const pieChartData = useMemo(() => {
     const currentMonth = new Date().getMonth();
@@ -140,6 +165,9 @@ const AnalyticsView = ({ expenseTracker }) => {
 
   return (
     <div className="space-y-8">
+      {/* Debug Info - Remove this after fixing */}
+      <DebugInfo transactions={transactions} />
+      
       {/* Current Month Expense Distribution */}
       <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg p-8 border border-white/50">
         <div className="flex items-center justify-between mb-6">
