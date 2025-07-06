@@ -190,8 +190,8 @@ const App = () => {
         setShowSyncModal={setShowSyncModal}
       />
 
-      {/* Navigation - Mobile Optimized */}
-      <div className="relative bg-white/50 backdrop-blur-xl border-b border-gray-200/20 sticky top-0 z-40">
+      {/* Navigation - Mobile Optimized with Better Transparency */}
+      <div className="relative bg-white/90 backdrop-blur-xl border-b border-gray-200/50 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Mobile Navigation - Horizontal Scroll */}
           <nav className="flex space-x-1 sm:space-x-8 overflow-x-auto scrollbar-hide py-2 sm:py-0">
@@ -203,8 +203,8 @@ const App = () => {
                   onClick={() => setCurrentView(item.id)}
                   className={`py-3 sm:py-4 px-4 sm:px-1 border-b-2 font-semibold text-xs sm:text-sm transition-all duration-300 whitespace-nowrap flex-shrink-0 min-w-0 ${
                     currentView === item.id
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-blue-500 text-blue-600 bg-blue-50/80'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50/50'
                   }`}
                 >
                   <div className="flex flex-col sm:flex-row items-center space-y-1 sm:space-y-0 sm:space-x-2">
