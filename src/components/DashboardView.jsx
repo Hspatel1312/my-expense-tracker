@@ -1,6 +1,7 @@
 import React from 'react';
 import { DollarSign, TrendingUp, ArrowUpDown, Target, Star, AlertTriangle, Wallet, Award, ChevronRight } from 'lucide-react';
 import { categoryColors } from '../constants/categories';
+import { parseCategory } from '../utils/helpers';
 
 const DashboardView = ({ 
   expenseTracker, 
@@ -13,11 +14,114 @@ const DashboardView = ({
     currentMonthExpenses,
     savingsRate,
     balances,
-    topCategories
+    transactions = [] // Add default to prevent undefined errors
   } = expenseTracker;
+
+  // Debug: Log transaction data
+  React.useEffect(() => {
+    console.log('🔍 DASHBOARD DEBUG - Total transactions:', transactions.length);
+    console.log('🔍 DASHBOARD DEBUG - Current month income:', currentMonthIncome);
+    console.log('🔍 DASHBOARD DEBUG - Current month expenses:', currentMonthExpenses);
+    
+    // Log current month transactions
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    const currentMonthTrans = transactions.filter(t => {
+      const date = new Date(t.date);
+      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+    });
+    
+    console.log('🔍 DASHBOARD DEBUG - Current month transactions:', currentMonthTrans.length);
+    currentMonthTrans.forEach(t => {
+      console.log(`  - ${t.description}: ₹${t.amount} (${t.type}) - ${t.category}`);
+    });
+  }, [transactions, currentMonthIncome, currentMonthExpenses]);
+
+  // Enhanced topCategories calculation with detailed debugging
+  const topCategories = React.useMemo(() => {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+
+    console.log('🔍 DASHBOARD - Calculating top categories for month:', currentMonth + 1, 'year:', currentYear);
+
+    // Get current month expenses
+    const currentMonthExpenses = transactions.filter(t => {
+      const date = new Date(t.date);
+      const isCurrentMonth = date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+      const isExpense = t.type === 'Expense';
+      
+      if (isCurrentMonth && isExpense) {
+        console.log(`🔍 DASHBOARD - Including expense: ${t.description} - ₹${t.amount} (${t.category})`);
+      }
+      
+      return isCurrentMonth && isExpense;
+    });
+
+    console.log('🔍 DASHBOARD - Current month expenses found:', currentMonthExpenses.length);
+
+    let transactionsToUse = currentMonthExpenses;
+
+    // If no current month data, fall back to recent expenses
+    if (transactionsToUse.length === 0) {
+      console.log('🔍 DASHBOARD - No current month data, using recent expenses...');
+      
+      // Get last 30 days of expenses
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      transactionsToUse = transactions.filter(t => {
+        const date = new Date(t.date);
+        return t.type === 'Expense' && date >= thirtyDaysAgo;
+      });
+      
+      console.log('🔍 DASHBOARD - Recent expenses (last 30 days):', transactionsToUse.length);
+    }
+
+    // Aggregate by main category
+    const categoryTotals = {};
+    transactionsToUse.forEach(t => {
+      const categoryData = parseCategory(t.category);
+      const main = categoryData.main || 'Unknown';
+      
+      categoryTotals[main] = (categoryTotals[main] || 0) + t.amount;
+      
+      console.log(`🔍 DASHBOARD - Adding ₹${t.amount} to category "${main}" (total: ₹${categoryTotals[main]})`);
+    });
+
+    console.log('🔍 DASHBOARD - Final category totals:', categoryTotals);
+
+    const result = Object.entries(categoryTotals)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 5);
+
+    console.log('🔍 DASHBOARD - Top 5 categories:', result);
+    return result;
+  }, [transactions]);
+
+  // Calculate total expenses for percentage calculations
+  const totalExpensesForCategories = React.useMemo(() => {
+    return topCategories.reduce((sum, [, amount]) => sum + amount, 0);
+  }, [topCategories]);
 
   return (
     <div className="space-y-4 sm:space-y-8">
+      {/* Debug Panel - Remove this in production */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm">
+        <h4 className="font-bold text-blue-800 mb-2">Dashboard Debug Info:</h4>
+        <div className="grid grid-cols-2 gap-4 text-blue-700">
+          <div>
+            <div>Total transactions: {transactions.length}</div>
+            <div>Current month income: ₹{currentMonthIncome.toLocaleString('en-IN')}</div>
+            <div>Current month expenses: ₹{currentMonthExpenses.toLocaleString('en-IN')}</div>
+          </div>
+          <div>
+            <div>Top categories count: {topCategories.length}</div>
+            <div>Category total: ₹{totalExpensesForCategories.toLocaleString('en-IN')}</div>
+            <div>Month/Year: {new Date().getMonth() + 1}/{new Date().getFullYear()}</div>
+          </div>
+        </div>
+      </div>
+
       {/* Key Metrics - Mobile Optimized */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
         {/* Total Balance */}
@@ -144,7 +248,12 @@ const DashboardView = ({
           <div className="flex items-center justify-between mb-4 sm:mb-6">
             <div>
               <h3 className="text-lg sm:text-xl font-bold text-gray-900">Top Categories</h3>
-              <p className="text-sm text-gray-600 hidden sm:block">Your biggest expenses this month</p>
+              <p className="text-sm text-gray-600 hidden sm:block">
+                {topCategories.length > 0 && totalExpensesForCategories === currentMonthExpenses ? 
+                  'Your biggest expenses this month' : 
+                  'Your recent biggest expenses'
+                }
+              </p>
             </div>
             <div className="p-2 sm:p-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl sm:rounded-2xl">
               <Award className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
@@ -153,17 +262,17 @@ const DashboardView = ({
           <div className="space-y-3 sm:space-y-4">
             {topCategories.length === 0 ? (
               <div className="text-center py-6 sm:py-8">
-                <p className="text-gray-500 text-sm">No expenses found for this month.</p>
+                <p className="text-gray-500 text-sm">No expenses found.</p>
               </div>
             ) : (
               topCategories.map(([category, amount], index) => {
-                const percentage = currentMonthExpenses > 0 ? (amount / currentMonthExpenses) * 100 : 0;
+                const percentage = totalExpensesForCategories > 0 ? (amount / totalExpensesForCategories) * 100 : 0;
                 return (
                   <div key={category} className="group">
                     <div className="flex justify-between items-center mb-2">
                       <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
                         <div className="text-sm sm:text-lg font-bold text-gray-400 flex-shrink-0">#{index + 1}</div>
-                        <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full flex-shrink-0" style={{ backgroundColor: categoryColors[category] }}></div>
+                        <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full flex-shrink-0" style={{ backgroundColor: categoryColors[category] || '#9CA3AF' }}></div>
                         <span className="font-semibold text-gray-900 text-sm sm:text-base truncate">{category}</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm sm:text-base flex-shrink-0">₹{amount.toLocaleString('en-IN')}</span>
@@ -173,7 +282,7 @@ const DashboardView = ({
                         className="h-1.5 sm:h-2 rounded-full transition-all duration-500 group-hover:shadow-lg"
                         style={{ 
                           width: `${percentage}%`,
-                          backgroundColor: categoryColors[category]
+                          backgroundColor: categoryColors[category] || '#9CA3AF'
                         }}
                       ></div>
                     </div>
