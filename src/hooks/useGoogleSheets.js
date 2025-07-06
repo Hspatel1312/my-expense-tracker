@@ -142,6 +142,22 @@ export const useGoogleSheets = () => {
     try {
       console.log('📊 Testing spreadsheet access...');
       
+      // Wait a moment for token to fully propagate
+      console.log('⏱️ Waiting for token propagation...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Verify token is still set
+      const currentToken = window.gapi.client.getToken();
+      console.log('🔍 Token verification:', {
+        hasToken: !!currentToken,
+        hasAccessToken: !!currentToken?.access_token,
+        tokenLength: currentToken?.access_token?.length
+      });
+      
+      if (!currentToken || !currentToken.access_token) {
+        throw new Error('No valid access token available after authentication');
+      }
+      
       // Test 1: Get spreadsheet metadata
       console.log('🔍 Test 1: Getting spreadsheet metadata...');
       const metadataResponse = await window.gapi.client.sheets.spreadsheets.get({
@@ -183,6 +199,33 @@ export const useGoogleSheets = () => {
       
     } catch (error) {
       console.error('❌ Spreadsheet access test failed:', error);
+      
+      // Try one more time with a fresh token check
+      console.log('🔄 Attempting retry with fresh token...');
+      try {
+        const retryToken = window.gapi.client.getToken();
+        console.log('🔍 Retry token check:', {
+          hasToken: !!retryToken,
+          hasAccessToken: !!retryToken?.access_token
+        });
+        
+        if (retryToken && retryToken.access_token) {
+          // Try just the basic spreadsheet get call
+          const retryResponse = await window.gapi.client.sheets.spreadsheets.get({
+            spreadsheetId: SHEETS_CONFIG.spreadsheetId
+          });
+          
+          console.log('✅ Retry successful:', retryResponse.result.properties.title);
+          return {
+            metadata: retryResponse.result,
+            transactionCount: 0,
+            accountCount: 0
+          };
+        }
+      } catch (retryError) {
+        console.error('❌ Retry also failed:', retryError);
+      }
+      
       throw error;
     }
   }, []);
