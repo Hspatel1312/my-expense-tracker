@@ -227,9 +227,40 @@ export const useGoogleSheets = () => {
       await initializeGoogleAPI();
       
       // Step 3: Authenticate and test using the exact method that worked
-      await authenticateAndTest();
+      const connectionResult = await authenticateAndTest();
       
-      // Step 4: Update connection state
+      // Step 4: If we got data during connection, use it immediately
+      if (connectionResult.balanceData && connectionResult.transactionData) {
+        console.log('🎯 Using data loaded during connection...');
+        
+        // Process balance data
+        const balanceRows = connectionResult.balanceData.values || [];
+        const newBalances = {};
+        const accountsList = [];
+        
+        balanceRows.slice(1).forEach(row => {
+          if (row && row.length >= 3 && row[0]) {
+            const accountName = row[0].trim();
+            const endingBalance = parseFloat(row[2]) || 0;
+            newBalances[accountName] = endingBalance;
+            accountsList.push(accountName);
+          }
+        });
+        
+        console.log('💰 Processed balances:', newBalances);
+        
+        // Update the App state immediately with the loaded data
+        // We'll trigger this through the useEffect in App.js
+        window.expenseTrackerData = {
+          balances: newBalances,
+          accounts: accountsList,
+          transactionCount: connectionResult.transactionData.values?.length - 1 || 0
+        };
+        
+        console.log('📊 Data stored for app use:', window.expenseTrackerData);
+      }
+      
+      // Step 5: Update connection state
       console.log('✅ Connection successful! Updating state...');
       setSheetsConfig(prev => ({
         ...prev,
@@ -239,6 +270,15 @@ export const useGoogleSheets = () => {
       
       setSyncStatus('success');
       console.log('🎉 Connection completed using proven method!');
+      
+      // Check if we have data to return immediately
+      if (window.expenseTrackerData) {
+        console.log('🚀 Returning loaded data immediately');
+        const data = window.expenseTrackerData;
+        // Clear the temporary storage
+        delete window.expenseTrackerData;
+        return data;
+      }
       
       return true;
       
