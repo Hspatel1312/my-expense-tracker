@@ -31,6 +31,7 @@ export const parseCategory = (categoryString) => {
   };
 };
 
+// FIXED: Timezone-safe date parsing function
 export const formatDateForInput = (dateString) => {
   try {
     console.log('🔍 Date parsing - Input:', dateString);
@@ -39,16 +40,15 @@ export const formatDateForInput = (dateString) => {
       return new Date().toISOString().split('T')[0];
     }
     
-    // Handle different date formats
     let date;
     
-    // Check if it's DD/MM/YYYY or DD-MM-YYYY format
+    // Handle different date formats with timezone safety
     if (dateString.includes('/') || dateString.includes('-')) {
       const separator = dateString.includes('/') ? '/' : '-';
       const parts = dateString.split(separator);
       
       if (parts.length === 3) {
-        // Assume DD/MM/YYYY or DD-MM-YYYY format
+        // Parse as DD/MM/YYYY or DD-MM-YYYY format
         const day = parseInt(parts[0]);
         const month = parseInt(parts[1]) - 1; // JavaScript months are 0-indexed
         const year = parseInt(parts[2]);
@@ -57,28 +57,81 @@ export const formatDateForInput = (dateString) => {
         const fullYear = year < 100 ? 2000 + year : year;
         
         console.log(`🔍 Parsed DD/MM/YYYY: ${day}/${month + 1}/${fullYear}`);
-        date = new Date(fullYear, month, day);
+        
+        // CRITICAL FIX: Create date in local timezone, not UTC
+        // This prevents the timezone shift issue
+        date = new Date(fullYear, month, day, 12, 0, 0, 0); // Set to noon to avoid DST issues
+        
       } else {
-        // Fallback to standard Date parsing
-        date = new Date(dateString);
+        // Fallback: try to parse, but fix timezone
+        const tempDate = new Date(dateString);
+        // Extract just the date parts to avoid timezone issues
+        date = new Date(tempDate.getFullYear(), tempDate.getMonth(), tempDate.getDate(), 12, 0, 0, 0);
       }
     } else {
-      // Try standard Date parsing
-      date = new Date(dateString);
+      // Try standard Date parsing but fix timezone
+      const tempDate = new Date(dateString);
+      // Extract just the date parts to avoid timezone issues  
+      date = new Date(tempDate.getFullYear(), tempDate.getMonth(), tempDate.getDate(), 12, 0, 0, 0);
     }
     
     // Validate the date
     if (isNaN(date.getTime())) {
       console.warn('⚠️ Invalid date, using current date');
       date = new Date();
+      // Set to noon to avoid DST issues
+      date.setHours(12, 0, 0, 0);
     }
     
     const result = date.toISOString().split('T')[0];
     console.log('🔍 Date parsing - Output:', result);
+    console.log('🔍 Date object created:', date.toString());
+    console.log('🔍 Date in local timezone:', date.toLocaleDateString('en-IN'));
+    
     return result;
   } catch (error) {
     console.error('❌ Date parsing error:', error);
-    return new Date().toISOString().split('T')[0];
+    const fallbackDate = new Date();
+    fallbackDate.setHours(12, 0, 0, 0);
+    return fallbackDate.toISOString().split('T')[0];
+  }
+};
+
+// Alternative function specifically for Google Sheets date parsing
+export const parseGoogleSheetsDate = (dateString) => {
+  try {
+    console.log('🔍 Google Sheets date parsing - Input:', dateString);
+    
+    if (!dateString) {
+      return new Date().toISOString().split('T')[0];
+    }
+    
+    // Handle DD/MM/YYYY format specifically (common in Google Sheets)
+    if (dateString.includes('/')) {
+      const parts = dateString.split('/');
+      if (parts.length === 3) {
+        const day = parseInt(parts[0]);
+        const month = parseInt(parts[1]) - 1; // 0-indexed
+        const year = parseInt(parts[2]);
+        
+        // Handle 2-digit years
+        const fullYear = year < 100 ? 2000 + year : year;
+        
+        // Create date in local timezone at noon (avoids DST issues)
+        const date = new Date(fullYear, month, day, 12, 0, 0, 0);
+        
+        console.log(`🔍 Google Sheets parsed: ${day}/${month + 1}/${fullYear} → ${date.toLocaleDateString('en-IN')}`);
+        
+        return date.toISOString().split('T')[0];
+      }
+    }
+    
+    // Fallback to the general function
+    return formatDateForInput(dateString);
+    
+  } catch (error) {
+    console.error('❌ Google Sheets date parsing error:', error);
+    return formatDateForInput(dateString);
   }
 };
 
