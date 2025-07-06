@@ -113,11 +113,19 @@ export const useGoogleSheets = () => {
             }
             
             console.log('✅ OAuth token received');
+            console.log('Token info:', {
+              hasAccessToken: !!response.access_token,
+              tokenType: response.token_type,
+              expiresIn: response.expires_in,
+              scope: response.scope
+            });
+            
             // Set the access token for API calls
             window.gapi.client.setToken({
               access_token: response.access_token
             });
             
+            console.log('🔑 Access token set for API calls');
             resolve(response);
           },
           error_callback: (error) => {
@@ -127,6 +135,7 @@ export const useGoogleSheets = () => {
         });
         
         // Request access token
+        console.log('🚀 Requesting access token...');
         client.requestAccessToken();
         
       } catch (error) {
@@ -134,6 +143,57 @@ export const useGoogleSheets = () => {
         reject(error);
       }
     });
+  }, []);
+
+  // Test spreadsheet access with detailed error handling
+  const testSpreadsheetAccess = useCallback(async () => {
+    try {
+      console.log('📊 Testing spreadsheet access...');
+      console.log('📋 Spreadsheet ID:', SHEETS_CONFIG.spreadsheetId);
+      console.log('🔑 Current token:', window.gapi.client.getToken());
+      
+      const response = await window.gapi.client.sheets.spreadsheets.get({
+        spreadsheetId: SHEETS_CONFIG.spreadsheetId
+      });
+      
+      console.log('✅ Spreadsheet access successful!');
+      console.log('📊 Spreadsheet info:', {
+        title: response.result.properties.title,
+        sheetCount: response.result.sheets?.length,
+        locale: response.result.properties.locale
+      });
+      
+      return response.result;
+      
+    } catch (error) {
+      console.error('❌ Spreadsheet access failed:', error);
+      
+      // Detailed error analysis
+      if (error.status === 400) {
+        console.error('🔍 Error 400 - Bad Request. Possible causes:');
+        console.error('   • Invalid Spreadsheet ID');
+        console.error('   • Malformed request');
+        console.error('   • API key restrictions');
+      } else if (error.status === 403) {
+        console.error('🔍 Error 403 - Forbidden. Possible causes:');
+        console.error('   • Insufficient permissions');
+        console.error('   • API key not authorized for this resource');
+        console.error('   • Spreadsheet not shared with your account');
+      } else if (error.status === 404) {
+        console.error('🔍 Error 404 - Not Found. Possible causes:');
+        console.error('   • Spreadsheet ID does not exist');
+        console.error('   • Spreadsheet is not accessible');
+      }
+      
+      console.error('📝 Full error details:', {
+        status: error.status,
+        statusText: error.statusText,
+        message: error.message,
+        result: error.result
+      });
+      
+      throw error;
+    }
   }, []);
 
   // Main connection function
@@ -158,13 +218,10 @@ export const useGoogleSheets = () => {
       console.log('🔐 Authenticating...');
       await authenticateWithGoogleIdentity();
       
-      // Step 4: Test spreadsheet access
-      console.log('📊 Testing spreadsheet access...');
-      const response = await window.gapi.client.sheets.spreadsheets.get({
-        spreadsheetId: SHEETS_CONFIG.spreadsheetId
-      });
+      // Step 4: Test spreadsheet access with detailed error handling
+      const spreadsheetInfo = await testSpreadsheetAccess();
       
-      console.log('✅ Successfully connected to:', response.result.properties.title);
+      console.log('🎉 Connection fully successful!');
       
       // Update connection state
       setSheetsConfig(prev => ({
@@ -177,15 +234,31 @@ export const useGoogleSheets = () => {
       return true;
       
     } catch (error) {
-      console.error('❌ Connection failed:', error);
+      console.error('❌ Connection failed at step:', error.message);
+      
+      // Provide specific user guidance based on error
+      let userMessage = 'Connection failed. ';
+      
+      if (error.message.includes('OAuth')) {
+        userMessage += 'Authentication was cancelled or failed.';
+      } else if (error.status === 400) {
+        userMessage += 'There may be an issue with your spreadsheet ID or API configuration.';
+      } else if (error.status === 403) {
+        userMessage += 'Permission denied. Make sure the spreadsheet is shared with your account.';
+      } else if (error.status === 404) {
+        userMessage += 'Spreadsheet not found. Please check your spreadsheet ID.';
+      } else {
+        userMessage += 'Please check the console for detailed error information.';
+      }
+      
       setSyncStatus('error');
       setSheetsConfig(prev => ({ ...prev, isConnected: false }));
-      throw error;
+      throw new Error(userMessage);
     } finally {
       setIsLoading(false);
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-  }, [loadGoogleAPI, loadGoogleIdentityServices, initializeGoogleAPI, authenticateWithGoogleIdentity]);
+  }, [loadGoogleAPI, loadGoogleIdentityServices, initializeGoogleAPI, authenticateWithGoogleIdentity, testSpreadsheetAccess]);
 
   // Load account balances
   const loadAccountBalances = useCallback(async () => {
