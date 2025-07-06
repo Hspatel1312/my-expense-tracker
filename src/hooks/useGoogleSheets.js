@@ -144,7 +144,7 @@ export const useGoogleSheets = () => {
       
       // Wait a moment for token to fully propagate
       console.log('⏱️ Waiting for token propagation...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
       // Verify token is still set
       const currentToken = window.gapi.client.getToken();
