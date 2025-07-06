@@ -1,4 +1,8 @@
-import React, { useState, useEffect } from 'react';
+{/* Quick Add Button - Mobile Optimized */}
+      <div className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-50">
+        <button
+          onClick={() => setIsFormVisible(true)}
+          className="group relative bg-gradient-to-r from-blue-600import React, { useState, useEffect } from 'react';
 import { PlusCircle, BarChart3, CreditCard, PieChart, RefreshCw, CheckCircle, AlertTriangle, X } from 'lucide-react';
 
 import Header from './components/Header';
