@@ -1,35 +1,4 @@
-// Process account balance data - scan all rows
-        const balanceRows = balanceData.result.values || [];
-        const newBalances = {};
-        const accountsList = [];
-        
-        console.log('🔍 Auth check - Scanning', balanceRows.length, 'rows for accounts...');
-        
-        // Scan all rows for account names in column E
-        balanceRows.forEach((row, index) => {
-          if (row && row[0]) { // Column E has a value
-            const accountName = row[0].toString().trim();
-            
-            // Skip header rows and empty values
-            if (accountName && 
-                accountName !== 'Accounts' && 
-                accountName !== 'Account' &&
-                accountName !== '' &&
-                !accountName.toLowerCase().includes('balance')) {
-              
-              // Get ending balance from column G (index 2), default to 0 if empty
-              let endingBalance = 0;
-              if (row[2]) {
-                endingBalance = parseAmount(row[2]);
-              }
-              
-              console.log(`🔍 Auth check - Found account: "${accountName}" with balance: ${endingBalance}`);
-              
-              newBalances[accountName] = endingBalance;
-              accountsList.push(accountName);
-            }
-          }
-        });import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { SHEETS_CONFIG } from '../constants/config';
 import { formatDateForInput, getTransactionType } from '../utils/helpers';
 
@@ -244,17 +213,36 @@ export const useGoogleSheets = () => {
           })
         ]);
         
-        // Process data with improved amount parsing
+        // Process account balance data - scan all rows
         const balanceRows = balanceData.result.values || [];
         const newBalances = {};
         const accountsList = [];
         
-        balanceRows.slice(1).forEach(row => {
-          if (row && row.length >= 3 && row[0]) {
-            const accountName = row[0].trim();
-            const endingBalance = parseAmount(row[2]);
-            newBalances[accountName] = endingBalance;
-            accountsList.push(accountName);
+        console.log('🔍 Auth check - Scanning', balanceRows.length, 'rows for accounts...');
+        
+        // Scan all rows for account names in column E
+        balanceRows.forEach((row, index) => {
+          if (row && row[0]) { // Column E has a value
+            const accountName = row[0].toString().trim();
+            
+            // Skip header rows and empty values
+            if (accountName && 
+                accountName !== 'Accounts' && 
+                accountName !== 'Account' &&
+                accountName !== '' &&
+                !accountName.toLowerCase().includes('balance')) {
+              
+              // Get ending balance from column G (index 2), default to 0 if empty
+              let endingBalance = 0;
+              if (row[2]) {
+                endingBalance = parseAmount(row[2]);
+              }
+              
+              console.log(`🔍 Auth check - Found account: "${accountName}" with balance: ${endingBalance}`);
+              
+              newBalances[accountName] = endingBalance;
+              accountsList.push(accountName);
+            }
           }
         });
         
@@ -369,7 +357,7 @@ export const useGoogleSheets = () => {
                 console.log('🔍 Testing Accounts range...');
                 const accountsTest = await window.gapi.client.sheets.spreadsheets.values.get({
                   spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-                  range: SHEETS_CONFIG.ACCOUNTS_RANGE
+                  range: 'Data!E:G'
                 });
                 
                 console.log('✅ Accounts test:', accountsTest.result.values?.length - 1, 'accounts');
