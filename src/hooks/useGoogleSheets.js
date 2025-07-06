@@ -97,45 +97,45 @@ export const useGoogleSheets = () => {
 
   // Modern authentication using Google Identity Services
   const authenticateWithGoogleIdentity = useCallback(() => {
-  return new Promise((resolve, reject) => {
-    try {
-      console.log('🔐 Starting OAuth authentication...');
-      
-      if (!window.google?.accounts?.oauth2) {
-        reject(new Error('Google Identity Services not loaded'));
-        return;
-      }
-
-      const client = window.google.accounts.oauth2.initTokenClient({
-        client_id: SHEETS_CONFIG.clientId,
-        scope: 'https://www.googleapis.com/auth/spreadsheets',
-        callback: (response) => {
-          if (response.error) {
-            console.error('❌ OAuth error:', response.error);
-            reject(new Error(`OAuth error: ${response.error}`));
-            return;
+    return new Promise((resolve, reject) => {
+      try {
+        console.log('🔐 Starting OAuth authentication...');
+        
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: SHEETS_CONFIG.clientId,
+          scope: 'https://www.googleapis.com/auth/spreadsheets',
+          callback: (response) => {
+            if (response.error) {
+              console.error('❌ OAuth error:', response);
+              reject(new Error(`OAuth error: ${response.error}`));
+              return;
+            }
+            
+            console.log('✅ OAuth token received successfully');
+            
+            // Set the access token for API calls
+            window.gapi.client.setToken({
+              access_token: response.access_token
+            });
+            
+            console.log('🔑 Access token configured for API calls');
+            resolve(response);
+          },
+          error_callback: (error) => {
+            console.error('❌ OAuth error callback:', error);
+            reject(new Error(`OAuth error: ${error}`));
           }
-          
-          console.log('✅ OAuth token received successfully');
-          window.gapi.client.setToken({ access_token: response.access_token });
-          console.log('🔑 Access token configured for API calls');
-          resolve(response);
-        },
-        error_callback: (error) => {
-          console.error('❌ OAuth error callback:', error);
-          reject(new Error(`OAuth error: ${error}`));
-        }
-      });
-      
-      // Request access token, ensuring user interaction if needed
-      client.requestAccessToken({ prompt: 'consent' if needed });
-      
-    } catch (error) {
-      console.error('❌ Authentication setup failed:', error);
-      reject(error);
-    }
-  });
-}, []);
+        });
+        
+        // Request access token
+        client.requestAccessToken();
+        
+      } catch (error) {
+        console.error('❌ Authentication setup failed:', error);
+        reject(error);
+      }
+    });
+  }, []);
 
   // Test both spreadsheet ranges that we know work
   const testSpreadsheetAccess = useCallback(async () => {
