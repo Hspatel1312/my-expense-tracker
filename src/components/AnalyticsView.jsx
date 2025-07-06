@@ -25,8 +25,17 @@ const AnalyticsView = ({ expenseTracker }) => {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     
-    console.log('🔍 Debug - Current month:', currentMonth, 'Current year:', currentYear);
-    console.log('🔍 Debug - Total transactions:', transactions?.length || 0);
+    console.log('🔍 Analytics Debug - Current month:', currentMonth + 1, 'Current year:', currentYear);
+    console.log('🔍 Analytics Debug - Total transactions:', transactions?.length || 0);
+    
+    // Debug: Log sample transaction dates
+    if (transactions && transactions.length > 0) {
+      console.log('🔍 Sample transaction dates:');
+      transactions.slice(0, 5).forEach((t, i) => {
+        const date = new Date(t.date);
+        console.log(`  ${i + 1}. ${t.date} → Month: ${date.getMonth() + 1}, Year: ${date.getFullYear()}, Description: ${t.description}`);
+      });
+    }
     
     const categoryTotals = {};
     
@@ -36,16 +45,22 @@ const AnalyticsView = ({ expenseTracker }) => {
         const date = new Date(t.date);
         const isCurrentMonth = date.getMonth() === currentMonth && date.getFullYear() === currentYear;
         const isExpense = t.type === 'Expense';
+        
+        if (isCurrentMonth && isExpense) {
+          console.log(`🔍 Current month expense found: ${t.description} - ${t.amount} on ${t.date}`);
+        }
+        
         return isExpense && isCurrentMonth;
       });
+    
+    console.log('🔍 Analytics Debug - Current month expenses:', filteredTransactions.length);
     
     // If no current month data, use all-time data
     if (filteredTransactions.length === 0) {
       console.log('🔍 No current month data, using all-time expenses');
       filteredTransactions = transactions.filter(t => t.type === 'Expense');
+      console.log('🔍 All-time expenses:', filteredTransactions.length);
     }
-    
-    console.log('🔍 Debug - Filtered transactions:', filteredTransactions.length);
     
     filteredTransactions.forEach(t => {
       const categoryData = parseCategory(t.category);
@@ -53,7 +68,7 @@ const AnalyticsView = ({ expenseTracker }) => {
       categoryTotals[main] = (categoryTotals[main] || 0) + t.amount;
     });
     
-    console.log('🔍 Debug - Category totals:', categoryTotals);
+    console.log('🔍 Analytics Debug - Category totals:', categoryTotals);
     
     const result = Object.entries(categoryTotals)
       .map(([category, amount]) => ({
@@ -63,7 +78,6 @@ const AnalyticsView = ({ expenseTracker }) => {
       }))
       .sort((a, b) => b.value - a.value);
     
-    console.log('🔍 Debug - Pie chart data:', result);
     return result;
   }, [transactions]);
 
