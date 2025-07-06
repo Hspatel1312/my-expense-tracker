@@ -225,7 +225,7 @@ const App = () => {
         </div>
       </div>
 
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 pt-6 sm:pt-8">
         {/* Sync Status Banner */}
         {googleSheets.syncStatus !== 'idle' && (
           <div className={`mb-4 sm:mb-6 p-3 sm:p-4 rounded-xl border text-sm sm:text-base ${
