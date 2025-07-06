@@ -20,30 +20,66 @@ const App = () => {
   const expenseTracker = useExpenseTracker();
   const googleSheets = useGoogleSheets();
 
-  // Sync data when Google Sheets connects
-  const syncData = useCallback(async () => {
-    if (googleSheets.sheetsConfig.isConnected) {
-      try {
-        const data = await googleSheets.manualSync();
-        if (data) {
+  // Enhanced sync data function that handles initial connection data
+  const syncData = useCallback(async (initialData = null) => {
+    if (!googleSheets.sheetsConfig.isConnected && !initialData) {
+      return; // Don't sync if not connected and no initial data
+    }
+
+    try {
+      let data = initialData;
+      
+      // If no initial data provided, do a manual sync
+      if (!data && googleSheets.sheetsConfig.isConnected) {
+        console.log('🔄 Performing manual sync...');
+        data = await googleSheets.manualSync();
+      }
+      
+      if (data) {
+        console.log('📊 Updating app state with data:', data);
+        
+        if (data.balances) {
           expenseTracker.setBalances(data.balances);
+        }
+        
+        if (data.accounts) {
           expenseTracker.setMasterData(prev => ({ 
             ...prev, 
             accounts: data.accounts 
           }));
+        }
+        
+        if (data.transactions) {
           expenseTracker.setTransactions(data.transactions);
         }
-      } catch (error) {
-        console.error('Sync failed:', error);
-        setError('Failed to sync with Google Sheets');
+        
+        console.log('✅ App state updated successfully');
       }
+    } catch (error) {
+      console.error('❌ Sync failed:', error);
+      setError('Failed to sync with Google Sheets');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [googleSheets.sheetsConfig.isConnected]);
+  }, [googleSheets.sheetsConfig.isConnected, googleSheets.manualSync, expenseTracker]);
 
+  // Handle connection success with immediate data
   useEffect(() => {
-    syncData();
+    // Check for data loaded during connection
+    if (window.expenseTrackerData) {
+      console.log('🎯 Found data from connection, using immediately...');
+      const data = window.expenseTrackerData;
+      syncData(data);
+      // Clear the temporary storage
+      delete window.expenseTrackerData;
+    }
   }, [syncData]);
+
+  // Only sync on connection changes (not on initial mount)
+  useEffect(() => {
+    if (googleSheets.sheetsConfig.isConnected && !window.expenseTrackerData) {
+      console.log('🔄 Connection established, syncing data...');
+      syncData();
+    }
+  }, [googleSheets.sheetsConfig.isConnected, syncData]);
 
   // Handle form submission
   const handleAddTransaction = async () => {
