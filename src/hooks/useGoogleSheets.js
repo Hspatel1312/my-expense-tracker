@@ -350,11 +350,26 @@ export const useGoogleSheets = () => {
       const dataRows = rows.slice(1);
       
       const transactions = dataRows
-        .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
-        .map((row, index) => ({
+      .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
+      .map((row, index) => {
+        // Better amount parsing - handle different formats
+        let amount = 0;
+        if (row[1]) {
+          // Remove currency symbols, commas, and parse
+          const cleanAmount = row[1].toString().replace(/[₹,\s]/g, '');
+          amount = parseFloat(cleanAmount) || 0;
+        }
+        
+        console.log('🔍 Parsing transaction:', {
+          rawAmount: row[1],
+          cleanAmount: amount,
+          description: row[3]
+        });
+    
+        return {
           id: `sheet_${index}_${Date.now()}`,
           date: formatDateForInput(row[0]),
-          amount: parseFloat(row[1]) || 0,
+          amount: amount,
           category: row[2] || '',
           description: row[3] || '',
           tag: row[4] || '',
@@ -363,7 +378,8 @@ export const useGoogleSheets = () => {
           synced: true,
           source: 'sheets',
           sheetRow: index + 2
-        }));
+        };
+      });
 
       console.log('✅ Transactions loaded successfully:', transactions.length, 'transactions');
       return transactions;
