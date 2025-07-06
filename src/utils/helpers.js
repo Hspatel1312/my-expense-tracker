@@ -15,9 +15,51 @@ export const parseCategory = (categoryString) => {
 
 export const formatDateForInput = (dateString) => {
   try {
-    const date = new Date(dateString);
-    return date.toISOString().split('T')[0];
-  } catch {
+    console.log('🔍 Date parsing - Input:', dateString);
+    
+    if (!dateString) {
+      return new Date().toISOString().split('T')[0];
+    }
+    
+    // Handle different date formats
+    let date;
+    
+    // Check if it's DD/MM/YYYY or DD-MM-YYYY format
+    if (dateString.includes('/') || dateString.includes('-')) {
+      const separator = dateString.includes('/') ? '/' : '-';
+      const parts = dateString.split(separator);
+      
+      if (parts.length === 3) {
+        // Assume DD/MM/YYYY or DD-MM-YYYY format
+        const day = parseInt(parts[0]);
+        const month = parseInt(parts[1]) - 1; // JavaScript months are 0-indexed
+        const year = parseInt(parts[2]);
+        
+        // Handle 2-digit years (assume 20xx)
+        const fullYear = year < 100 ? 2000 + year : year;
+        
+        console.log(`🔍 Parsed DD/MM/YYYY: ${day}/${month + 1}/${fullYear}`);
+        date = new Date(fullYear, month, day);
+      } else {
+        // Fallback to standard Date parsing
+        date = new Date(dateString);
+      }
+    } else {
+      // Try standard Date parsing
+      date = new Date(dateString);
+    }
+    
+    // Validate the date
+    if (isNaN(date.getTime())) {
+      console.warn('⚠️ Invalid date, using current date');
+      date = new Date();
+    }
+    
+    const result = date.toISOString().split('T')[0];
+    console.log('🔍 Date parsing - Output:', result);
+    return result;
+  } catch (error) {
+    console.error('❌ Date parsing error:', error);
     return new Date().toISOString().split('T')[0];
   }
 };
