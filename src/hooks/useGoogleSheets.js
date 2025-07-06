@@ -151,11 +151,42 @@ export const useGoogleSheets = () => {
                 console.log('✅ Accounts test:', accountsTest.result.values?.length - 1, 'accounts');
                 
                 // All tests passed - resolve with success
-                resolve({
-                  spreadsheet: testResponse.result,
-                  transactionCount: transactionsTest.result.values?.length - 1 || 0,
-                  accountCount: accountsTest.result.values?.length - 1 || 0
-                });
+                console.log('🎉 All tests passed! Loading initial data...');
+                
+                // Immediately load the actual data while token is fresh
+                try {
+                  const [balanceData, transactionData] = await Promise.all([
+                    window.gapi.client.sheets.spreadsheets.values.get({
+                      spreadsheetId: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
+                      range: 'Data!E:G'
+                    }),
+                    window.gapi.client.sheets.spreadsheets.values.get({
+                      spreadsheetId: '1F_dHrcPRz4KFISVQFnOPYD37VWZBKlkIgyLLm66Enlg',
+                      range: 'Transactions!A:I'
+                    })
+                  ]);
+                  
+                  console.log('✅ Initial data loaded successfully!');
+                  console.log('💰 Balance data rows:', balanceData.result.values?.length);
+                  console.log('📊 Transaction data rows:', transactionData.result.values?.length);
+                  
+                  resolve({
+                    spreadsheet: testResponse.result,
+                    transactionCount: transactionsTest.result.values?.length - 1 || 0,
+                    accountCount: accountsTest.result.values?.length - 1 || 0,
+                    balanceData: balanceData.result,
+                    transactionData: transactionData.result
+                  });
+                  
+                } catch (dataError) {
+                  console.warn('⚠️ Initial data loading failed, but connection succeeded:', dataError);
+                  // Still resolve with success since connection worked
+                  resolve({
+                    spreadsheet: testResponse.result,
+                    transactionCount: transactionsTest.result.values?.length - 1 || 0,
+                    accountCount: accountsTest.result.values?.length - 1 || 0
+                  });
+                }
                 
               } catch (testError) {
                 console.error('❌ Manual method test failed:', testError);
