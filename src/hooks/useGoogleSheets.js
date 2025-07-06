@@ -219,7 +219,7 @@ export const useGoogleSheets = () => {
       await authenticateWithGoogleIdentity();
       
       // Step 4: Test spreadsheet access with detailed error handling
-      const spreadsheetInfo = await testSpreadsheetAccess();
+      await testSpreadsheetAccess();
       
       console.log('🎉 Connection fully successful!');
       
