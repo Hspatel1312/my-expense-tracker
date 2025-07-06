@@ -130,7 +130,7 @@ const App = () => {
 
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
-      {/* Add mobile-specific styles */}
+      {/* Enhanced mobile-specific styles */}
       <style jsx global>{`
         .scrollbar-hide {
           -ms-overflow-style: none;
@@ -145,6 +145,56 @@ const App = () => {
           body {
             overflow-x: hidden;
           }
+        }
+
+        /* Enhanced navigation backdrop */
+        .nav-backdrop {
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          background: rgba(255, 255, 255, 0.95);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+        }
+
+        /* Dark mode navigation support */
+        @media (prefers-color-scheme: dark) {
+          .nav-backdrop {
+            background: rgba(31, 41, 55, 0.95);
+            border-bottom: 1px solid rgba(75, 85, 99, 0.3);
+          }
+        }
+
+        /* Navigation button enhancements */
+        .nav-button {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          position: relative;
+          overflow: hidden;
+        }
+
+        .nav-button::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(147, 51, 234, 0.1));
+          opacity: 0;
+          transition: opacity 0.3s ease;
+          border-radius: inherit;
+        }
+
+        .nav-button.active::before {
+          opacity: 1;
+        }
+
+        .nav-button:hover::before {
+          opacity: 0.5;
+        }
+
+        /* Enhanced scrolling behavior */
+        html {
+          scroll-behavior: smooth;
         }
       `}</style>
 
@@ -190,29 +240,34 @@ const App = () => {
         setShowSyncModal={setShowSyncModal}
       />
 
-      {/* Navigation - Fixed Sticky Navigation */}
-      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-xl border-b border-gray-200/60 shadow-sm">
+      {/* Enhanced Navigation - Fixed Sticky Navigation */}
+      <div className="sticky top-0 z-50 nav-backdrop">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Mobile Navigation - Horizontal Scroll */}
+          {/* Mobile Navigation - Enhanced Horizontal Scroll */}
           <nav className="flex space-x-1 sm:space-x-8 overflow-x-auto scrollbar-hide py-2 sm:py-0">
             {navigationItems.map((item) => {
               const IconComponent = item.icon;
+              const isActive = currentView === item.id;
               return (
                 <button
                   key={item.id}
                   onClick={() => setCurrentView(item.id)}
-                  className={`py-3 sm:py-4 px-4 sm:px-1 border-b-2 font-semibold text-xs sm:text-sm transition-all duration-300 whitespace-nowrap flex-shrink-0 min-w-0 ${
-                    currentView === item.id
-                      ? 'border-blue-500 text-blue-600 bg-blue-50/80'
+                  className={`nav-button py-3 sm:py-4 px-4 sm:px-1 border-b-2 font-semibold text-xs sm:text-sm transition-all duration-300 whitespace-nowrap flex-shrink-0 min-w-0 rounded-t-lg ${
+                    isActive
+                      ? 'border-blue-500 text-blue-600 bg-blue-50/80 active'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50/50'
                   }`}
                 >
-                  <div className="flex flex-col sm:flex-row items-center space-y-1 sm:space-y-0 sm:space-x-2">
+                  <div className="flex flex-col sm:flex-row items-center space-y-1 sm:space-y-0 sm:space-x-2 relative z-10">
                     <IconComponent className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                     <span className="truncate">
                       {item.label}
                       {item.count !== undefined && (
-                        <span className="ml-1 text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full">
+                        <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                          isActive 
+                            ? 'bg-blue-200 text-blue-700' 
+                            : 'bg-gray-200 text-gray-600'
+                        }`}>
                           {item.count}
                         </span>
                       )}
@@ -260,7 +315,7 @@ const App = () => {
         {navigationItems.find(item => item.id === currentView)?.component}
       </div>
 
-      {/* Quick Add Button - Mobile Optimized */}
+      {/* Enhanced Quick Add Button */}
       <div className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-50">
         <button
           onClick={() => setIsFormVisible(true)}
@@ -268,8 +323,8 @@ const App = () => {
         >
           <PlusCircle className="w-5 h-5 sm:w-6 sm:h-6" />
           
-          {/* Mobile Label */}
-          <span className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-3 py-1 rounded-lg text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap sm:hidden">
+          {/* Enhanced Mobile Label */}
+          <span className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-gray-900/90 backdrop-blur-sm text-white px-3 py-1 rounded-lg text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap sm:hidden">
             Add Transaction
           </span>
         </button>
