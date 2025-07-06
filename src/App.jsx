@@ -2,7 +2,16 @@
       <div className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-50">
         <button
           onClick={() => setIsFormVisible(true)}
-          className="group relative bg-gradient-to-r from-blue-600import React, { useState, useEffect } from 'react';
+          className="group relative bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white p-3 sm:p-4 rounded-full shadow-2xl hover:shadow-3xl transform hover:scale-110 transition-all duration-300 border-2 border-white/20"
+        >
+          <PlusCircle className="w-5 h-5 sm:w-6 sm:h-6" />
+          
+          {/* Mobile Label */}
+          <span className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-3 py-1 rounded-lg text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap sm:hidden">
+            Add Transaction
+          </span>
+        </button>
+      </div>import React, { useState, useEffect } from 'react';
 import { PlusCircle, BarChart3, CreditCard, PieChart, RefreshCw, CheckCircle, AlertTriangle, X } from 'lucide-react';
 
 import Header from './components/Header';
@@ -171,6 +180,23 @@ const App = () => {
 
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
+      {/* Add mobile-specific styles */}
+      <style jsx global>{`
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        
+        /* Ensure viewport meta tag behavior */
+        @media (max-width: 640px) {
+          body {
+            overflow-x: hidden;
+          }
+        }
+      `}</style>
       {/* Loading Overlay */}
       {googleSheets.isLoading && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
