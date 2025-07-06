@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { PieChart, BarChart3, TrendingUp, Calendar } from 'lucide-react';
+import { PieChart, BarChart3, TrendingUp, Calendar, Activity, Zap } from 'lucide-react';
 import { 
   PieChart as RechartsPieChart, 
   Pie, 
@@ -20,66 +20,24 @@ import { parseCategory } from '../utils/helpers';
 const AnalyticsView = ({ expenseTracker }) => {
   const { transactions = [], currentMonthExpenses = 0 } = expenseTracker || {};
 
-  // Debug: Log all transactions to understand the data structure
-  React.useEffect(() => {
-    console.log('🔍 DEBUG - All transactions in Analytics:', transactions.length);
-    transactions.slice(0, 10).forEach((t, i) => {
-      console.log(`Transaction ${i + 1}:`, {
-        id: t.id,
-        date: t.date,
-        amount: t.amount,
-        category: t.category,
-        description: t.description,
-        type: t.type,
-        parsedDate: new Date(t.date),
-        month: new Date(t.date).getMonth() + 1,
-        year: new Date(t.date).getFullYear()
-      });
-    });
-  }, [transactions]);
-
-  // Category-wise expense distribution (current month with better debugging)
+  // Category-wise expense distribution with enhanced logic
   const pieChartData = useMemo(() => {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     
-    console.log('🔍 Analytics Debug - Current month:', currentMonth + 1, 'Current year:', currentYear);
-    console.log('🔍 Analytics Debug - Total transactions:', transactions?.length || 0);
-    
     const categoryTotals = {};
     
-    // Filter for current month expenses with detailed debugging
+    // Get current month expenses
     const currentMonthExpenses = transactions.filter(t => {
       const date = new Date(t.date);
-      const transactionMonth = date.getMonth();
-      const transactionYear = date.getFullYear();
-      const isCurrentMonth = transactionMonth === currentMonth && transactionYear === currentYear;
+      const isCurrentMonth = date.getMonth() === currentMonth && date.getFullYear() === currentYear;
       const isExpense = t.type === 'Expense';
-      
-      console.log(`🔍 Transaction check: "${t.description}"`, {
-        date: t.date,
-        parsedDate: date,
-        transactionMonth: transactionMonth + 1,
-        transactionYear,
-        isCurrentMonth,
-        isExpense,
-        type: t.type,
-        include: isCurrentMonth && isExpense
-      });
-      
       return isCurrentMonth && isExpense;
     });
     
-    console.log('🔍 Current month expenses found:', currentMonthExpenses.length);
-    currentMonthExpenses.forEach(t => {
-      console.log(`  - ${t.description}: ₹${t.amount} (${t.category})`);
-    });
-    
-    // If we have current month data, use it, otherwise fall back to recent data
+    // If insufficient current month data, use recent expenses
     let filteredTransactions = currentMonthExpenses;
-    
-    if (filteredTransactions.length === 0) {
-      console.log('🔍 No current month data, using last 3 months...');
+    if (filteredTransactions.length <= 2) {
       const threeMonthsAgo = new Date();
       threeMonthsAgo.setMonth(currentMonth - 3);
       
@@ -87,20 +45,13 @@ const AnalyticsView = ({ expenseTracker }) => {
         const date = new Date(t.date);
         return t.type === 'Expense' && date >= threeMonthsAgo;
       });
-      
-      console.log('🔍 Last 3 months expenses:', filteredTransactions.length);
     }
     
-    // Aggregate by category
     filteredTransactions.forEach(t => {
       const categoryData = parseCategory(t.category);
       const main = categoryData.main || 'Unknown';
       categoryTotals[main] = (categoryTotals[main] || 0) + t.amount;
-      
-      console.log(`🔍 Adding to category "${main}": ₹${t.amount} (total now: ₹${categoryTotals[main]})`);
     });
-    
-    console.log('🔍 Final category totals:', categoryTotals);
     
     const result = Object.entries(categoryTotals)
       .map(([category, amount]) => ({
@@ -110,7 +61,6 @@ const AnalyticsView = ({ expenseTracker }) => {
       }))
       .sort((a, b) => b.value - a.value);
     
-    console.log('🔍 Pie chart data result:', result);
     return result;
   }, [transactions]);
 
@@ -126,11 +76,7 @@ const AnalyticsView = ({ expenseTracker }) => {
              t.type === 'Expense';
     });
     
-    if (currentMonthExpenses.length > 0) {
-      return 'Current Month';
-    } else {
-      return 'Recent';
-    }
+    return currentMonthExpenses.length > 2 ? 'Current Month' : 'Recent';
   }, [transactions]);
 
   // Month-wise expense trend (last 12 months)
@@ -181,7 +127,7 @@ const AnalyticsView = ({ expenseTracker }) => {
     const topCategories = [...new Set(transactions
       .filter(t => t.type === 'Expense')
       .map(t => parseCategory(t.category).main))]
-      .slice(0, 5); // Top 5 categories
+      .slice(0, 5);
     
     return months.map(({ month, year, monthNum }) => {
       const monthData = { month };
@@ -205,85 +151,132 @@ const AnalyticsView = ({ expenseTracker }) => {
   const topCategories = pieChartData.slice(0, 5);
 
   return (
-    <div className="space-y-4 sm:space-y-8">
-      {/* Debug Panel - Remove this in production */}
-      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm">
-        <h4 className="font-bold text-yellow-800 mb-2">Debug Info:</h4>
-        <div className="space-y-1 text-yellow-700">
-          <div>Total transactions: {transactions.length}</div>
-          <div>Pie chart categories: {pieChartData.length}</div>
-          <div>Showing period: {displayPeriod}</div>
-          <div>Current month: {new Date().getMonth() + 1}/{new Date().getFullYear()}</div>
+    <div className="space-y-6 sm:space-y-8">
+      {/* Hero Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-blue-100 text-sm font-medium">Total Transactions</p>
+              <p className="text-2xl font-bold">{transactions.length}</p>
+            </div>
+            <Activity className="w-8 h-8 text-blue-200" />
+          </div>
+        </div>
+        
+        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-purple-100 text-sm font-medium">Categories</p>
+              <p className="text-2xl font-bold">{pieChartData.length}</p>
+            </div>
+            <PieChart className="w-8 h-8 text-purple-200" />
+          </div>
+        </div>
+        
+        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-6 text-white shadow-xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-emerald-100 text-sm font-medium">Data Quality</p>
+              <p className="text-2xl font-bold">
+                {transactions.length > 0 ? Math.round((transactions.filter(t => t.synced).length / transactions.length) * 100) : 0}%
+              </p>
+            </div>
+            <Zap className="w-8 h-8 text-emerald-200" />
+          </div>
         </div>
       </div>
 
-      {/* Current Month Expense Distribution */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-8 border border-white/50">
-        <div className="flex items-center justify-between mb-4 sm:mb-6">
+      {/* Expense Distribution Chart */}
+      <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl p-6 sm:p-8 border border-white/50">
+        <div className="flex items-center justify-between mb-6 sm:mb-8">
           <div>
-            <h3 className="text-lg sm:text-xl font-bold text-gray-900">
+            <h3 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
               {displayPeriod} Expense Distribution
             </h3>
-            <p className="text-sm text-gray-600 hidden sm:block">
+            <p className="text-gray-500 mt-1">
               {displayPeriod === 'Current Month' ? 
                 'How your money is allocated across categories this month' : 
                 'Recent expense allocation across categories'
               }
             </p>
           </div>
-          <div className="p-2 sm:p-3 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl sm:rounded-2xl">
-            <PieChart className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
+          <div className="p-3 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-lg">
+            <PieChart className="w-6 h-6 text-white" />
           </div>
         </div>
         
         {pieChartData.length === 0 ? (
-          <div className="text-center py-12 sm:py-16">
-            <div className="mx-auto w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-gray-200 to-gray-300 rounded-full flex items-center justify-center mb-4 sm:mb-6">
-              <PieChart className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" />
+          <div className="text-center py-16 sm:py-20">
+            <div className="w-20 h-20 bg-gradient-to-br from-gray-200 to-gray-300 rounded-2xl mx-auto mb-6 flex items-center justify-center">
+              <PieChart className="w-10 h-10 text-gray-400" />
             </div>
-            <p className="text-gray-500 text-lg sm:text-xl font-medium">No expense data available</p>
-            <p className="text-gray-400 text-sm mt-2">Add some expenses to see the distribution</p>
+            <h4 className="text-xl font-bold text-gray-500 mb-2">No expense data available</h4>
+            <p className="text-gray-400">Add some expenses to see the distribution</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
-            {/* Chart */}
-            <div className="h-64 sm:h-80 order-2 lg:order-1">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12">
+            {/* Enhanced Chart */}
+            <div className="h-80 sm:h-96 order-2 lg:order-1 relative">
               <ResponsiveContainer width="100%" height="100%">
                 <RechartsPieChart>
                   <Pie
                     data={pieChartData}
                     cx="50%"
                     cy="50%"
-                    outerRadius="80%"
+                    outerRadius="85%"
+                    innerRadius="40%"
                     fill="#8884d8"
                     dataKey="value"
-                    label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    stroke="none"
                   >
                     {pieChartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => [`₹${value.toLocaleString('en-IN')}`, 'Amount']} />
+                  <Tooltip 
+                    formatter={(value) => [`₹${value.toLocaleString('en-IN')}`, 'Amount']}
+                    contentStyle={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                      backdropFilter: 'blur(10px)',
+                      border: 'none',
+                      borderRadius: '12px',
+                      boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1)'
+                    }}
+                  />
                 </RechartsPieChart>
               </ResponsiveContainer>
+              {/* Center Label */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-gray-900">
+                    ₹{pieChartData.reduce((sum, cat) => sum + cat.value, 0).toLocaleString('en-IN')}
+                  </p>
+                  <p className="text-sm text-gray-500 font-medium">Total</p>
+                </div>
+              </div>
             </div>
             
-            {/* Legend */}
-            <div className="space-y-2 sm:space-y-4 order-1 lg:order-2">
+            {/* Enhanced Legend */}
+            <div className="space-y-3 sm:space-y-4 order-1 lg:order-2">
               {pieChartData.map((item, index) => (
-                <div key={item.name} className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-xl">
-                  <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
-                    <div className="text-xs sm:text-sm font-bold text-gray-400 flex-shrink-0">#{index + 1}</div>
-                    <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }}></div>
-                    <span className="font-medium text-gray-900 text-sm sm:text-base truncate">{item.name}</span>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className="font-bold text-gray-900 text-sm sm:text-base">₹{item.value.toLocaleString('en-IN')}</div>
-                    <div className="text-xs text-gray-500">
-                      {pieChartData.length > 0 ? 
-                        ((item.value / pieChartData.reduce((sum, cat) => sum + cat.value, 0)) * 100).toFixed(1) + '%' :
-                        '0%'
-                      }
+                <div key={item.name} className="group hover:bg-gray-50 rounded-2xl p-4 transition-all duration-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3 min-w-0 flex-1">
+                      <div className="flex items-center space-x-2">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-sm`}
+                             style={{ background: `linear-gradient(135deg, ${item.color}, ${item.color}dd)` }}>
+                          #{index + 1}
+                        </div>
+                        <div className="w-4 h-4 rounded-full shadow-sm" style={{ backgroundColor: item.color }}></div>
+                      </div>
+                      <span className="font-semibold text-gray-900 text-base truncate">{item.name}</span>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="font-bold text-gray-900 text-base">₹{item.value.toLocaleString('en-IN')}</div>
+                      <div className="text-sm text-gray-500">
+                        {((item.value / pieChartData.reduce((sum, cat) => sum + cat.value, 0)) * 100).toFixed(1)}%
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -293,98 +286,113 @@ const AnalyticsView = ({ expenseTracker }) => {
         )}
       </div>
 
-      {/* Monthly Expense Trend */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-8 border border-white/50">
-        <div className="flex items-center justify-between mb-4 sm:mb-6">
+      {/* Monthly Trend Chart */}
+      <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl p-6 sm:p-8 border border-white/50">
+        <div className="flex items-center justify-between mb-6 sm:mb-8">
           <div>
-            <h3 className="text-lg sm:text-xl font-bold text-gray-900">Monthly Expense & Income Trend</h3>
-            <p className="text-sm text-gray-600 hidden sm:block">Your financial flow over the last 12 months</p>
+            <h3 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+              Monthly Financial Flow
+            </h3>
+            <p className="text-gray-500 mt-1">Income vs expenses over the last 12 months</p>
           </div>
-          <div className="p-2 sm:p-3 bg-gradient-to-r from-green-500 to-blue-500 rounded-xl sm:rounded-2xl">
-            <TrendingUp className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
+          <div className="p-3 bg-gradient-to-br from-green-500 to-blue-600 rounded-2xl shadow-lg">
+            <TrendingUp className="w-6 h-6 text-white" />
           </div>
         </div>
         
-        <div className="h-64 sm:h-80">
+        <div className="h-80 sm:h-96">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={monthlyExpenseData}>
-              <CartesianGrid strokeDasharray="3 3" />
+            <BarChart data={monthlyExpenseData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis 
                 dataKey="month" 
-                tick={{ fontSize: 12 }}
-                interval="preserveStartEnd"
+                tick={{ fontSize: 12, fill: '#6b7280' }}
+                axisLine={false}
+                tickLine={false}
               />
               <YAxis 
                 tickFormatter={(value) => `₹${(value/1000).toFixed(0)}K`}
-                tick={{ fontSize: 12 }}
+                tick={{ fontSize: 12, fill: '#6b7280' }}
+                axisLine={false}
+                tickLine={false}
               />
               <Tooltip 
                 formatter={(value, name) => [
                   `₹${value.toLocaleString('en-IN')}`, 
                   name === 'expenses' ? 'Expenses' : 'Income'
-                ]} 
+                ]}
+                contentStyle={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                  backdropFilter: 'blur(10px)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1)'
+                }}
               />
-              <Bar dataKey="income" fill="#10B981" name="income" />
-              <Bar dataKey="expenses" fill="#EF4444" name="expenses" />
+              <Bar dataKey="income" fill="url(#incomeGradient)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="expenses" fill="url(#expenseGradient)" radius={[4, 4, 0, 0]} />
+              <defs>
+                <linearGradient id="incomeGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10B981" />
+                  <stop offset="100%" stopColor="#059669" />
+                </linearGradient>
+                <linearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#EF4444" />
+                  <stop offset="100%" stopColor="#DC2626" />
+                </linearGradient>
+              </defs>
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Category Trend Analysis */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-8 border border-white/50">
-        <div className="flex items-center justify-between mb-4 sm:mb-6">
+      {/* Category Trends */}
+      <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl p-6 sm:p-8 border border-white/50">
+        <div className="flex items-center justify-between mb-6 sm:mb-8">
           <div>
-            <h3 className="text-lg sm:text-xl font-bold text-gray-900">Category Spending Trends</h3>
-            <p className="text-sm text-gray-600 hidden sm:block">Track how your spending patterns change over time</p>
+            <h3 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+              Category Spending Trends
+            </h3>
+            <p className="text-gray-500 mt-1">Track spending patterns across top categories</p>
           </div>
-          <div className="p-2 sm:p-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl sm:rounded-2xl">
-            <Calendar className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
+          <div className="p-3 bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl shadow-lg">
+            <Calendar className="w-6 h-6 text-white" />
           </div>
         </div>
         
-        <div className="h-64 sm:h-80">
+        <div className="h-80 sm:h-96">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={categoryTrendData}>
-              <CartesianGrid strokeDasharray="3 3" />
+            <LineChart data={categoryTrendData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis 
                 dataKey="month" 
-                tick={{ fontSize: 12 }}
+                tick={{ fontSize: 12, fill: '#6b7280' }}
+                axisLine={false}
+                tickLine={false}
               />
               <YAxis 
                 tickFormatter={(value) => `₹${(value/1000).toFixed(0)}K`}
-                tick={{ fontSize: 12 }}
+                tick={{ fontSize: 12, fill: '#6b7280' }}
+                axisLine={false}
+                tickLine={false}
               />
-              <Tooltip formatter={(value, name) => [`₹${value.toLocaleString('en-IN')}`, name]} />
+              <Tooltip 
+                formatter={(value, name) => [`₹${value.toLocaleString('en-IN')}`, name]}
+                contentStyle={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                  backdropFilter: 'blur(10px)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1)'
+                }}
+              />
               {topCategories.map((category, index) => (
                 <Line 
                   key={category.name}
                   type="monotone" 
                   dataKey={category.name} 
                   stroke={category.color}
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
+                  strokeWidth={3}
+                  dot={{ r: 4, fill: category.color, strokeWidth: 2, stroke: '#fff' }}
+                  activeDot={{ r: 6, stroke: category.color, strokeWidth: 2 }}
                 />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-        
-        {/* Legend for mobile */}
-        <div className="mt-4 sm:mt-6 grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-4">
-          {topCategories.map((category) => (
-            <div key={category.name} className="flex items-center space-x-2">
-              <div 
-                className="w-3 h-3 rounded-full flex-shrink-0" 
-                style={{ backgroundColor: category.color }}
-              ></div>
-              <span className="text-xs sm:text-sm font-medium text-gray-700 truncate">{category.name}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default AnalyticsView;
