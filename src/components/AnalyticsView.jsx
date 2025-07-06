@@ -25,28 +25,46 @@ const AnalyticsView = ({ expenseTracker }) => {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     
+    console.log('🔍 Debug - Current month:', currentMonth, 'Current year:', currentYear);
+    console.log('🔍 Debug - Total transactions:', transactions?.length || 0);
+    
     const categoryTotals = {};
     
-    transactions
+    // First try current month
+    let filteredTransactions = transactions
       .filter(t => {
         const date = new Date(t.date);
-        return t.type === 'Expense' && 
-               date.getMonth() === currentMonth && 
-               date.getFullYear() === currentYear;
-      })
-      .forEach(t => {
-        const categoryData = parseCategory(t.category);
-        const main = categoryData.main || 'Unknown';
-        categoryTotals[main] = (categoryTotals[main] || 0) + t.amount;
+        const isCurrentMonth = date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+        const isExpense = t.type === 'Expense';
+        return isExpense && isCurrentMonth;
       });
     
-    return Object.entries(categoryTotals)
+    // If no current month data, use all-time data
+    if (filteredTransactions.length === 0) {
+      console.log('🔍 No current month data, using all-time expenses');
+      filteredTransactions = transactions.filter(t => t.type === 'Expense');
+    }
+    
+    console.log('🔍 Debug - Filtered transactions:', filteredTransactions.length);
+    
+    filteredTransactions.forEach(t => {
+      const categoryData = parseCategory(t.category);
+      const main = categoryData.main || 'Unknown';
+      categoryTotals[main] = (categoryTotals[main] || 0) + t.amount;
+    });
+    
+    console.log('🔍 Debug - Category totals:', categoryTotals);
+    
+    const result = Object.entries(categoryTotals)
       .map(([category, amount]) => ({
         name: category,
         value: amount,
         color: categoryColors[category] || '#9CA3AF'
       }))
       .sort((a, b) => b.value - a.value);
+    
+    console.log('🔍 Debug - Pie chart data:', result);
+    return result;
   }, [transactions]);
 
   // Month-wise expense trend (last 12 months)
@@ -126,8 +144,12 @@ const AnalyticsView = ({ expenseTracker }) => {
       <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg p-8 border border-white/50">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-xl font-bold text-gray-900">Current Month Expense Distribution</h3>
-            <p className="text-gray-600">How your money is allocated across categories</p>
+            <h3 className="text-xl font-bold text-gray-900">
+              {pieChartData.length > 0 ? 'Current Month Expense Distribution' : 'All-Time Expense Distribution'}
+            </h3>
+            <p className="text-gray-600">
+              {pieChartData.length > 0 ? 'How your money is allocated across categories this month' : 'Overall expense allocation across all transactions'}
+            </p>
           </div>
           <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl">
             <PieChart className="w-6 h-6 text-white" />
@@ -175,7 +197,10 @@ const AnalyticsView = ({ expenseTracker }) => {
                   <div className="text-right">
                     <div className="font-bold text-gray-900">₹{item.value.toLocaleString('en-IN')}</div>
                     <div className="text-xs text-gray-500">
-                      {((item.value / currentMonthExpenses) * 100).toFixed(1)}%
+                      {pieChartData.length > 0 ? 
+                        ((item.value / pieChartData.reduce((sum, cat) => sum + cat.value, 0)) * 100).toFixed(1) + '%' :
+                        '0%'
+                      }
                     </div>
                   </div>
                 </div>
