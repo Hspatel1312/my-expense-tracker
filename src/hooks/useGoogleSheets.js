@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { SHEETS_CONFIG } from '../constants/config';
-import { formatDateForInput, getTransactionType } from '../utils/helpers';
+import { parseGoogleSheetsDate, getTransactionType } from '../utils/helpers';
 
 export const useGoogleSheets = () => {
   const [sheetsConfig, setSheetsConfig] = useState({
@@ -167,6 +167,60 @@ export const useGoogleSheets = () => {
     }
   }, [loadGoogleAPI]);
 
+  // Process transaction data with timezone-safe date parsing
+  const processTransactionData = useCallback((transactionData) => {
+    const transactionRows = transactionData.values || [];
+    const dataRows = transactionRows.slice(1);
+    
+    const transactions = dataRows
+      .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
+      .map((row, index) => {
+        const amount = parseAmount(row[1]);
+        
+        // Use timezone-safe date parsing
+        const parsedDate = parseGoogleSheetsDate(row[0]);
+        
+        // Better transaction type detection
+        let transactionType = row[8] || ''; // Column I (Type)
+        if (!transactionType) {
+          transactionType = getTransactionType(row[2] || ''); // Fallback to category-based detection
+        }
+        
+        console.log(`🔍 Processing transaction ${index + 1}:`, {
+          rawDate: row[0],
+          parsedDate: parsedDate,
+          rawAmount: row[1],
+          parsedAmount: amount,
+          description: row[3],
+          category: row[2],
+          detectedType: transactionType
+        });
+        
+        return {
+          id: `sheet_${index}_${Date.now()}_${Math.random()}`,
+          date: parsedDate, // Now using timezone-safe parsing
+          amount: amount,
+          category: row[2] || '',
+          description: row[3] || '',
+          tag: row[4] || '',
+          account: row[5] || '',
+          type: transactionType,
+          synced: true,
+          source: 'sheets',
+          sheetRow: index + 2
+        };
+      });
+    
+    console.log('📊 Processed transactions with timezone-safe dates:', transactions.length);
+    console.log('🔍 Sample transaction dates:', transactions.slice(0, 3).map(t => ({ 
+      description: t.description, 
+      originalDate: t.date, 
+      displayDate: new Date(t.date).toLocaleDateString('en-IN') 
+    })));
+    
+    return transactions;
+  }, [parseAmount]);
+
   // Enhanced check for existing authentication
   const checkExistingAuth = useCallback(async () => {
     try {
@@ -205,7 +259,7 @@ export const useGoogleSheets = () => {
         const [balanceData, transactionData] = await Promise.all([
           window.gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-            range: 'Data!E:G' // Full columns for accounts
+            range: 'Data!E:G'
           }),
           window.gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: SHEETS_CONFIG.spreadsheetId,
@@ -213,26 +267,23 @@ export const useGoogleSheets = () => {
           })
         ]);
         
-        // Process account balance data - scan all rows
+        // Process account balance data
         const balanceRows = balanceData.result.values || [];
         const newBalances = {};
         const accountsList = [];
         
         console.log('🔍 Auth check - Scanning', balanceRows.length, 'rows for accounts...');
         
-        // Scan all rows for account names in column E
         balanceRows.forEach((row, index) => {
-          if (row && row[0]) { // Column E has a value
+          if (row && row[0]) {
             const accountName = row[0].toString().trim();
             
-            // Skip header rows and empty values
             if (accountName && 
                 accountName !== 'Accounts' && 
                 accountName !== 'Account' &&
                 accountName !== '' &&
                 !accountName.toLowerCase().includes('balance')) {
               
-              // Get ending balance from column G (index 2), default to 0 if empty
               let endingBalance = 0;
               if (row[2]) {
                 endingBalance = parseAmount(row[2]);
@@ -246,43 +297,8 @@ export const useGoogleSheets = () => {
           }
         });
         
-        const transactionRows = transactionData.result.values || [];
-        const dataRows = transactionRows.slice(1);
-        
-        const transactions = dataRows
-          .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
-          .map((row, index) => {
-            const amount = parseAmount(row[1]);
-            
-            // Better transaction type detection
-            let transactionType = row[8] || ''; // Column I (Type)
-            if (!transactionType) {
-              transactionType = getTransactionType(row[2] || ''); // Fallback to category-based detection
-            }
-            
-            console.log(`🔍 Transaction ${index + 1}:`, {
-              rawAmount: row[1],
-              parsedAmount: amount,
-              description: row[3],
-              category: row[2],
-              detectedType: transactionType,
-              rawType: row[8]
-            });
-            
-            return {
-              id: `sheet_${index}_${Date.now()}_${Math.random()}`,
-              date: formatDateForInput(row[0]),
-              amount: amount,
-              category: row[2] || '',
-              description: row[3] || '',
-              tag: row[4] || '',
-              account: row[5] || '',
-              type: transactionType,
-              synced: true,
-              source: 'sheets',
-              sheetRow: index + 2
-            };
-          });
+        // Process transactions with timezone-safe dates
+        const transactions = processTransactionData(transactionData.result);
         
         console.log('📊 Auto-loaded data:', {
           balances: newBalances,
@@ -299,7 +315,6 @@ export const useGoogleSheets = () => {
         
       } catch (error) {
         console.log('❌ Stored token is invalid:', error);
-        // Clear invalid token
         window.gapi.client.setToken(null);
         localStorage.removeItem('google_auth_token');
         return false;
@@ -310,9 +325,9 @@ export const useGoogleSheets = () => {
       localStorage.removeItem('google_auth_token');
       return false;
     }
-  }, [gapiLoaded, gisLoaded, getStoredToken, parseAmount]);
+  }, [gapiLoaded, gisLoaded, getStoredToken, parseAmount, processTransactionData]);
 
-  // Authenticate and immediately test with the EXACT method that worked
+  // Authenticate and immediately test
   const authenticateAndTest = useCallback(() => {
     return new Promise((resolve, reject) => {
       try {
@@ -330,87 +345,46 @@ export const useGoogleSheets = () => {
             
             console.log('✅ OAuth token received');
             
-            // Set the access token
             window.gapi.client.setToken({
               access_token: response.access_token
             });
             
-            // Store the token for persistence
             storeToken({ access_token: response.access_token });
             
             console.log('🔑 Access token set and stored');
             
-            // Use the EXACT method that worked in manual test
-            console.log('⏰ Waiting 3 seconds then testing...');
             setTimeout(async () => {
               try {
-                console.log('🔍 Testing with exact manual method...');
+                console.log('🔍 Testing connection...');
                 
-                // Test 1: The exact call that worked manually
                 const testResponse = await window.gapi.client.sheets.spreadsheets.get({
                   spreadsheetId: SHEETS_CONFIG.spreadsheetId
                 });
                 
-                console.log('✅ SUCCESS with manual method!');
+                console.log('✅ SUCCESS!');
                 console.log('📊 Connected to:', testResponse.result.properties.title);
                 
-                // Test the data ranges that worked manually
-                console.log('🔍 Testing Transactions range...');
-                const transactionsTest = await window.gapi.client.sheets.spreadsheets.values.get({
-                  spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-                  range: SHEETS_CONFIG.TRANSACTIONS_RANGE
+                const [balanceData, transactionData] = await Promise.all([
+                  window.gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+                    range: 'Data!E:G'
+                  }),
+                  window.gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+                    range: SHEETS_CONFIG.TRANSACTIONS_RANGE
+                  })
+                ]);
+                
+                console.log('✅ Initial data loaded successfully!');
+                
+                resolve({
+                  spreadsheet: testResponse.result,
+                  balanceData: balanceData.result,
+                  transactionData: transactionData.result
                 });
-                
-                console.log('✅ Transactions test:', transactionsTest.result.values?.length - 1, 'transactions');
-                
-                console.log('🔍 Testing Accounts range...');
-                const accountsTest = await window.gapi.client.sheets.spreadsheets.values.get({
-                  spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-                  range: 'Data!E:G'
-                });
-                
-                console.log('✅ Accounts test:', accountsTest.result.values?.length - 1, 'accounts');
-                
-                // All tests passed - resolve with success
-                console.log('🎉 All tests passed! Loading initial data...');
-                
-                // Immediately load the actual data while token is fresh
-                try {
-                  const [balanceData, transactionData] = await Promise.all([
-                    window.gapi.client.sheets.spreadsheets.values.get({
-                      spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-                      range: 'Data!E:G' // Full columns for accounts
-                    }),
-                    window.gapi.client.sheets.spreadsheets.values.get({
-                      spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-                      range: SHEETS_CONFIG.TRANSACTIONS_RANGE
-                    })
-                  ]);
-                  
-                  console.log('✅ Initial data loaded successfully!');
-                  console.log('💰 Balance data rows:', balanceData.result.values?.length);
-                  console.log('📊 Transaction data rows:', transactionData.result.values?.length);
-                  
-                  resolve({
-                    spreadsheet: testResponse.result,
-                    transactionCount: transactionsTest.result.values?.length - 1 || 0,
-                    accountCount: accountsTest.result.values?.length - 1 || 0,
-                    balanceData: balanceData.result,
-                    transactionData: transactionData.result
-                  });
-                  
-                } catch (dataError) {
-                  console.warn('⚠️ Initial data loading failed, but connection succeeded:', dataError);
-                  // Still resolve with success since connection worked
-                  resolve({
-                    spreadsheet: testResponse.result,
-                    transactionCount: transactionsTest.result.values?.length - 1 || 0,
-                    accountCount: accountsTest.result.values?.length - 1 || 0
-                  });
-                }
                 
               } catch (testError) {
-                console.error('❌ Manual method test failed:', testError);
+                console.error('❌ Test failed:', testError);
                 reject(testError);
               }
             }, 3000);
@@ -421,7 +395,6 @@ export const useGoogleSheets = () => {
           }
         });
         
-        // Request access token
         client.requestAccessToken();
         
       } catch (error) {
@@ -431,51 +404,42 @@ export const useGoogleSheets = () => {
     });
   }, [storeToken]);
 
-  // Simplified connection function using the working method
+  // Simplified connection function
   const connectToGoogleSheets = useCallback(async () => {
-    console.log('🚀 Starting connection with proven method...');
+    console.log('🚀 Starting connection...');
     setSyncStatus('syncing');
     setIsLoading(true);
 
     try {
-      // Step 1: Load APIs
       await Promise.all([
         loadGoogleAPI(),
         loadGoogleIdentityServices()
       ]);
       
-      // Step 2: Initialize API
       await initializeGoogleAPI();
       
-      // Step 3: Authenticate and test using the exact method that worked
       const connectionResult = await authenticateAndTest();
       
-      // Step 4: Process and return the loaded data
       let returnData = { balances: {}, accounts: [], transactions: [] };
       
       if (connectionResult.balanceData && connectionResult.transactionData) {
         console.log('🎯 Processing data loaded during connection...');
         
-        // Process balance data with full column scan
+        // Process balance data
         const balanceRows = connectionResult.balanceData.values || [];
         const newBalances = {};
         const accountsList = [];
         
-        console.log('🔍 Scanning', balanceRows.length, 'rows for accounts in connection...');
-        
-        // Scan all rows for account names in column E
         balanceRows.forEach((row, index) => {
-          if (row && row[0]) { // Column E has a value
+          if (row && row[0]) {
             const accountName = row[0].toString().trim();
             
-            // Skip header rows and empty values
             if (accountName && 
                 accountName !== 'Accounts' && 
                 accountName !== 'Account' &&
                 accountName !== '' &&
                 !accountName.toLowerCase().includes('balance')) {
               
-              // Get ending balance from column G (index 2), default to 0 if empty
               let endingBalance = 0;
               if (row[2]) {
                 endingBalance = parseAmount(row[2]);
@@ -489,35 +453,8 @@ export const useGoogleSheets = () => {
           }
         });
         
-        // Process transaction data with improved amount parsing
-        const transactionRows = connectionResult.transactionData.values || [];
-        const dataRows = transactionRows.slice(1);
-        
-        const transactions = dataRows
-          .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
-          .map((row, index) => {
-            const amount = parseAmount(row[1]);
-            
-            console.log(`🔍 Processing transaction ${index + 1}:`, {
-              rawAmount: row[1],
-              parsedAmount: amount,
-              description: row[3]
-            });
-
-            return {
-              id: `sheet_${index}_${Date.now()}_${Math.random()}`,
-              date: formatDateForInput(row[0]),
-              amount: amount,
-              category: row[2] || '',
-              description: row[3] || '',
-              tag: row[4] || '',
-              account: row[5] || '',
-              type: row[8] || getTransactionType(row[2] || ''),
-              synced: true,
-              source: 'sheets',
-              sheetRow: index + 2
-            };
-          });
+        // Process transactions with timezone-safe dates
+        const transactions = processTransactionData(connectionResult.transactionData);
         
         returnData = {
           balances: newBalances,
@@ -527,11 +464,8 @@ export const useGoogleSheets = () => {
         
         console.log('💰 Processed balances:', newBalances);
         console.log('📊 Processed transactions:', transactions.length);
-        console.log('🔍 Sample transaction with amount:', transactions.find(t => t.amount > 0));
       }
       
-      // Step 5: Update connection state
-      console.log('✅ Connection successful! Updating state...');
       setSheetsConfig(prev => ({
         ...prev,
         isConnected: true,
@@ -539,9 +473,9 @@ export const useGoogleSheets = () => {
       }));
       
       setSyncStatus('success');
-      console.log('🎉 Connection completed, returning data!');
+      console.log('🎉 Connection completed!');
       
-      return returnData; // Return the processed data
+      return returnData;
       
     } catch (error) {
       console.error('❌ Connection failed:', error);
@@ -553,49 +487,41 @@ export const useGoogleSheets = () => {
       setIsLoading(false);
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-  }, [loadGoogleAPI, loadGoogleIdentityServices, initializeGoogleAPI, authenticateAndTest, parseAmount]);
+  }, [loadGoogleAPI, loadGoogleIdentityServices, initializeGoogleAPI, authenticateAndTest, parseAmount, processTransactionData]);
 
-  // Load account balances - scan full E:G columns
+  // Load account balances
   const loadAccountBalances = useCallback(async () => {
     try {
-      // Check if we have a valid token
       const currentToken = window.gapi.client.getToken();
       if (!currentToken || !currentToken.access_token) {
         console.log('🔄 No valid token for accounts, reconnecting...');
         await connectToGoogleSheets();
       }
 
-      console.log('💰 Loading account balances from full E:G range...');
+      console.log('💰 Loading account balances...');
       const response = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-        range: 'Data!E:G' // Full columns
+        range: 'Data!E:G'
       });
 
       const rows = response.result.values || [];
       const newBalances = {};
       const accountsList = [];
 
-      console.log('🔍 Scanning', rows.length, 'rows for accounts...');
-
-      // Scan all rows for account names in column E
       rows.forEach((row, index) => {
-        if (row && row[0]) { // Column E has a value
+        if (row && row[0]) {
           const accountName = row[0].toString().trim();
           
-          // Skip header rows and empty values
           if (accountName && 
               accountName !== 'Accounts' && 
               accountName !== 'Account' &&
               accountName !== '' &&
               !accountName.toLowerCase().includes('balance')) {
             
-            // Get ending balance from column G (index 2), default to 0 if empty
             let endingBalance = 0;
             if (row[2]) {
               endingBalance = parseAmount(row[2]);
             }
-            
-            console.log(`🔍 Found account: "${accountName}" with balance: ${endingBalance}`);
             
             newBalances[accountName] = endingBalance;
             accountsList.push(accountName);
@@ -611,10 +537,9 @@ export const useGoogleSheets = () => {
     }
   }, [connectToGoogleSheets, parseAmount]);
 
-  // Load transactions (ensure token is valid)
+  // Load transactions
   const loadTransactions = useCallback(async () => {
     try {
-      // Check if we have a valid token
       const currentToken = window.gapi.client.getToken();
       if (!currentToken || !currentToken.access_token) {
         console.log('🔄 No valid token for transactions, reconnecting...');
@@ -627,36 +552,15 @@ export const useGoogleSheets = () => {
         range: SHEETS_CONFIG.TRANSACTIONS_RANGE
       });
 
-      const rows = response.result.values || [];
-      const dataRows = rows.slice(1);
-      
-      const transactions = dataRows
-        .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
-        .map((row, index) => {
-          const amount = parseAmount(row[1]);
+      const transactions = processTransactionData(response.result);
 
-          return {
-            id: `sheet_${index}_${Date.now()}_${Math.random()}`,
-            date: formatDateForInput(row[0]),
-            amount: amount,
-            category: row[2] || '',
-            description: row[3] || '',
-            tag: row[4] || '',
-            account: row[5] || '',
-            type: row[8] || getTransactionType(row[2] || ''),
-            synced: true,
-            source: 'sheets',
-            sheetRow: index + 2
-          };
-        });
-
-      console.log('✅ Transactions loaded successfully:', transactions.length, 'transactions');
+      console.log('✅ Transactions loaded successfully:', transactions.length);
       return transactions;
     } catch (error) {
       console.error('❌ Failed to load transactions:', error);
       return [];
     }
-  }, [connectToGoogleSheets, parseAmount]);
+  }, [connectToGoogleSheets, processTransactionData]);
 
   // Add transaction to sheets
   const addTransactionToSheets = useCallback(async (transaction) => {
@@ -737,7 +641,6 @@ export const useGoogleSheets = () => {
         
         await initializeGoogleAPI();
         
-        // Check for stored token first
         const storedToken = getStoredToken();
         if (storedToken) {
           console.log('🔍 Setting stored token...');
@@ -745,7 +648,6 @@ export const useGoogleSheets = () => {
             access_token: storedToken.access_token
           });
           
-          // Test if it still works
           try {
             await window.gapi.client.sheets.spreadsheets.get({
               spreadsheetId: SHEETS_CONFIG.spreadsheetId
@@ -754,7 +656,6 @@ export const useGoogleSheets = () => {
             console.log('✅ Stored token is still valid!');
             setSheetsConfig(prev => ({ ...prev, isConnected: true }));
             
-            // Load data automatically
             const existingData = await checkExistingAuth();
             if (existingData) {
               window.expenseTrackerData = existingData;
