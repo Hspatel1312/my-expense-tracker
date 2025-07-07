@@ -2,7 +2,7 @@ import React from 'react';
 import { Search, Filter, Edit, Trash2, Calendar, DollarSign, Tag, CreditCard, X, ChevronDown } from 'lucide-react';
 import { parseCategory, months, getYears } from '../utils/helpers';
 
-const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransaction }) => {
+const TransactionsView = ({ expenseTracker, onEditTransaction, deleteTransactionFromSheets }) => {
   const {
     filteredTransactions,
     filters,
@@ -10,12 +10,38 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransacti
     showFilters,
     setShowFilters,
     clearFilters,
+    deleteTransaction,
     masterData,
     uniqueMainCategories,
     getCategoryColor
   } = expenseTracker;
 
   const uniqueAccounts = [...new Set(filteredTransactions.map(t => t.account))];
+
+  // Handle delete with both local and sheets deletion
+  const handleDeleteTransaction = async (transactionId) => {
+    const transaction = filteredTransactions.find(t => t.id === transactionId);
+    
+    if (!window.confirm('Are you sure you want to delete this transaction?')) {
+      return;
+    }
+    
+    console.log('🗑️ Deleting transaction:', transactionId, 'sheetRow:', transaction?.sheetRow);
+    
+    // Try to delete from sheets first if connected and has sheet row
+    if (deleteTransactionFromSheets && transaction?.sheetRow) {
+      try {
+        await deleteTransactionFromSheets(transaction);
+        console.log('✅ Transaction deleted from sheets');
+      } catch (error) {
+        console.error('❌ Failed to delete from sheets:', error);
+        // Continue with local deletion even if sheets deletion fails
+      }
+    }
+    
+    // Delete from local state
+    deleteTransaction(transactionId);
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -194,7 +220,7 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransacti
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => onDeleteTransaction(transaction.id)}
+                        onClick={() => handleDeleteTransaction(transaction.id)}
                         className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -255,7 +281,7 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransacti
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => onDeleteTransaction(transaction.id)}
+                          onClick={() => handleDeleteTransaction(transaction.id)}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                         >
                           <Trash2 className="w-4 h-4" />
