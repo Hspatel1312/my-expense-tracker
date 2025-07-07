@@ -31,11 +31,26 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, deleteTransaction
       description: transaction?.description,
       sheetRow: transaction?.sheetRow,
       source: transaction?.source,
-      synced: transaction?.synced
+      synced: transaction?.synced,
+      fullTransaction: transaction // Log the entire transaction object
     });
     
-    // Try to delete from sheets first if connected and has sheet row
-    if (deleteTransactionFromSheets && transaction?.sheetRow && transaction?.synced) {
+    // Check all conditions for sheets deletion
+    const hasDeleteFunction = !!deleteTransactionFromSheets;
+    const hasSheetRow = !!(transaction?.sheetRow && transaction.sheetRow > 1);
+    const isSynced = !!transaction?.synced;
+    const fromSheets = transaction?.source === 'sheets';
+    
+    console.log('🔍 Deletion conditions check:', {
+      hasDeleteFunction,
+      hasSheetRow,
+      isSynced,
+      fromSheets,
+      shouldDeleteFromSheets: hasDeleteFunction && hasSheetRow && (isSynced || fromSheets)
+    });
+    
+    // Try to delete from sheets if it's a synced transaction with a sheet row
+    if (hasDeleteFunction && hasSheetRow && (isSynced || fromSheets)) {
       console.log('🔗 Attempting to delete from Google Sheets...');
       try {
         const sheetsDeleteResult = await deleteTransactionFromSheets(transaction);
@@ -52,9 +67,14 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, deleteTransaction
       }
     } else {
       console.log('ℹ️ Skipping sheets deletion because:', {
-        hasDeleteFunction: !!deleteTransactionFromSheets,
-        hasSheetRow: !!transaction?.sheetRow,
-        isSynced: !!transaction?.synced
+        hasDeleteFunction,
+        hasSheetRow,
+        isSynced,
+        fromSheets,
+        reason: !hasDeleteFunction ? 'No delete function' :
+                !hasSheetRow ? 'No valid sheet row' :
+                (!isSynced && !fromSheets) ? 'Transaction not from sheets' :
+                'Unknown reason'
       });
     }
     
