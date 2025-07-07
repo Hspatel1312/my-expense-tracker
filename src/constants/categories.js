@@ -17,11 +17,14 @@ export const categoryColors = {
   'Income': '#66BB6A'
 };
 
+// 🔥 UPDATED: Fallback categories (will be replaced by Google Sheets data)
 export const masterCategories = [
   { main: 'Food', sub: 'Food', combined: 'Food > Food' },
+  { main: 'Social Life', sub: 'Social Life', combined: 'Social Life > Social Life' },
+  { main: 'Entertainment', sub: 'Entertainment', combined: 'Entertainment > Entertainment' },
+  { main: 'Fuel', sub: 'Eon', combined: 'Fuel > Eon' },
   { main: 'Fuel', sub: 'Honda City', combined: 'Fuel > Honda City' },
   { main: 'Fuel', sub: 'Aviator', combined: 'Fuel > Aviator' },
-  { main: 'Fuel', sub: 'Eon', combined: 'Fuel > Eon' },
   { main: 'Culture', sub: 'Culture', combined: 'Culture > Culture' },
   { main: 'Household', sub: 'Grocery', combined: 'Household > Grocery' },
   { main: 'Household', sub: 'Laundry', combined: 'Household > Laundry' },
@@ -42,7 +45,38 @@ export const masterCategories = [
   { main: 'Misc', sub: 'Misc', combined: 'Misc > Misc' },
   { main: 'Income', sub: 'Income', combined: 'Income > Income' },
   { main: 'Income', sub: 'Reload', combined: 'Income > Reload' },
-  { main: 'Income', sub: 'Others', combined: 'Income > Others' },
-  { main: 'Social Life', sub: 'Social Life', combined: 'Social Life > Social Life' },
-  { main: 'Entertainment', sub: 'Entertainment', combined: 'Entertainment > Entertainment' }
+  { main: 'Income', sub: 'Others', combined: 'Income > Others' }
 ];
+
+// 🔥 NEW: Function to process categories from Google Sheets
+export const processCategoriesFromSheets = (sheetsData) => {
+  if (!sheetsData || !Array.isArray(sheetsData)) {
+    console.log('📋 No valid sheets data, using fallback categories');
+    return masterCategories;
+  }
+
+  const categories = [];
+  
+  sheetsData.forEach((row, index) => {
+    if (row && row.length >= 3) {
+      const main = row[0] ? row[0].toString().trim() : '';
+      const sub = row[1] ? row[1].toString().trim() : '';
+      const combined = row[2] ? row[2].toString().trim() : '';
+      
+      if (main && sub && combined) {
+        categories.push({
+          main: main,
+          sub: sub,
+          combined: combined
+        });
+        
+        console.log(`📋 Processed category ${index + 1}:`, { main, sub, combined });
+      }
+    }
+  });
+  
+  console.log('📋 Total categories processed from sheets:', categories.length);
+  
+  // If no categories were processed, return fallback
+  return categories.length > 0 ? categories : masterCategories;
+};
