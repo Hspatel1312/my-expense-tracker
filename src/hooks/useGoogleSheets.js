@@ -167,7 +167,7 @@ export const useGoogleSheets = () => {
     }
   }, [loadGoogleAPI]);
 
-  // NEW: Load categories from Google Sheets
+  // Load categories from Google Sheets
   const loadCategories = useCallback(async () => {
     try {
       console.log('📋 Loading categories from Google Sheets...');
@@ -886,3 +886,35 @@ export const useGoogleSheets = () => {
             
             // Load data automatically
             const existingData = await checkExistingAuth();
+            if (existingData) {
+              window.expenseTrackerData = existingData;
+            }
+            
+          } catch (error) {
+            console.log('❌ Stored token invalid, will need to re-authenticate');
+            localStorage.removeItem('google_auth_token');
+          }
+        }
+        
+      } catch (error) {
+        console.error('❌ Initialization failed:', error);
+      }
+    };
+    
+    initializeAndCheck();
+  }, [loadGoogleAPI, loadGoogleIdentityServices, initializeGoogleAPI, getStoredToken, checkExistingAuth]);
+
+  return {
+    sheetsConfig,
+    syncStatus,
+    isLoading,
+    gapiLoaded: gapiLoaded && gisLoaded,
+    connectToGoogleSheets,
+    manualSync,
+    addTransactionToSheets,
+    deleteTransactionFromSheets, // Export delete function
+    loadAccountBalances,
+    loadTransactions,
+    loadCategories // Export loadCategories for standalone use
+  };
+};
