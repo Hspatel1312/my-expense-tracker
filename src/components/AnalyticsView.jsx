@@ -14,31 +14,16 @@ import {
   LineChart,
   Line
 } from 'recharts';
-import { categoryColors } from '../constants/categories';
 import { parseCategory } from '../utils/helpers';
 
 const AnalyticsView = ({ expenseTracker }) => {
-  const { transactions = [], currentMonthExpenses = 0 } = expenseTracker || {};
+  const { 
+    transactions = [], 
+    currentMonthExpenses = 0,
+    getCategoryColor 
+  } = expenseTracker || {};
 
-  // Debug: Log all transactions to understand the data structure
-  React.useEffect(() => {
-    console.log('🔍 DEBUG - All transactions in Analytics:', transactions.length);
-    transactions.slice(0, 10).forEach((t, i) => {
-      console.log(`Transaction ${i + 1}:`, {
-        id: t.id,
-        date: t.date,
-        amount: t.amount,
-        category: t.category,
-        description: t.description,
-        type: t.type,
-        parsedDate: new Date(t.date),
-        month: new Date(t.date).getMonth() + 1,
-        year: new Date(t.date).getFullYear()
-      });
-    });
-  }, [transactions]);
-
-  // Category-wise expense distribution (current month with better debugging)
+  // Category-wise expense distribution (current month)
   const pieChartData = useMemo(() => {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
@@ -46,92 +31,58 @@ const AnalyticsView = ({ expenseTracker }) => {
     console.log('🔍 Analytics Debug - Current month:', currentMonth + 1, 'Current year:', currentYear);
     console.log('🔍 Analytics Debug - Total transactions:', transactions?.length || 0);
     
-    const categoryTotals = {};
-    
-    // Filter for current month expenses with detailed debugging
-    const currentMonthExpenses = transactions.filter(t => {
-      const date = new Date(t.date);
-      const transactionMonth = date.getMonth();
-      const transactionYear = date.getFullYear();
-      const isCurrentMonth = transactionMonth === currentMonth && transactionYear === currentYear;
-      const isExpense = t.type === 'Expense';
-      
-      console.log(`🔍 Transaction check: "${t.description}"`, {
-        date: t.date,
-        parsedDate: date,
-        transactionMonth: transactionMonth + 1,
-        transactionYear,
-        isCurrentMonth,
-        isExpense,
-        type: t.type,
-        include: isCurrentMonth && isExpense
-      });
-      
-      return isCurrentMonth && isExpense;
-    });
-    
-    console.log('🔍 Current month expenses found:', currentMonthExpenses.length);
-    currentMonthExpenses.forEach(t => {
-      console.log(`  - ${t.description}: ₹${t.amount} (${t.category})`);
-    });
-    
-    // If we have current month data, use it, otherwise fall back to recent data
-    let filteredTransactions = currentMonthExpenses;
-    
-    if (filteredTransactions.length === 0) {
-      console.log('🔍 No current month data, using last 3 months...');
-      const threeMonthsAgo = new Date();
-      threeMonthsAgo.setMonth(currentMonth - 3);
-      
-      filteredTransactions = transactions.filter(t => {
+    // Debug: Log sample transaction dates
+    if (transactions && transactions.length > 0) {
+      console.log('🔍 Sample transaction dates:');
+      transactions.slice(0, 5).forEach((t, i) => {
         const date = new Date(t.date);
-        return t.type === 'Expense' && date >= threeMonthsAgo;
+        console.log(`  ${i + 1}. ${t.date} → Month: ${date.getMonth() + 1}, Year: ${date.getFullYear()}, Description: ${t.description}`);
       });
-      
-      console.log('🔍 Last 3 months expenses:', filteredTransactions.length);
     }
     
-    // Aggregate by category
+    const categoryTotals = {};
+    
+    // First try current month
+    let filteredTransactions = transactions
+      .filter(t => {
+        const date = new Date(t.date);
+        const isCurrentMonth = date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+        const isExpense = t.type === 'Expense';
+        
+        if (isCurrentMonth && isExpense) {
+          console.log(`🔍 Current month expense found: ${t.description} - ${t.amount} on ${t.date}`);
+        }
+        
+        return isExpense && isCurrentMonth;
+      });
+    
+    console.log('🔍 Analytics Debug - Current month expenses:', filteredTransactions.length);
+    
+    // If no current month data, use all-time data
+    if (filteredTransactions.length === 0) {
+      console.log('🔍 No current month data, using all-time expenses');
+      filteredTransactions = transactions.filter(t => t.type === 'Expense');
+      console.log('🔍 All-time expenses:', filteredTransactions.length);
+    }
+    
     filteredTransactions.forEach(t => {
       const categoryData = parseCategory(t.category);
       const main = categoryData.main || 'Unknown';
       categoryTotals[main] = (categoryTotals[main] || 0) + t.amount;
-      
-      console.log(`🔍 Adding to category "${main}": ₹${t.amount} (total now: ₹${categoryTotals[main]})`);
     });
     
-    console.log('🔍 Final category totals:', categoryTotals);
+    console.log('🔍 Analytics Debug - Category totals:', categoryTotals);
     
     const result = Object.entries(categoryTotals)
       .map(([category, amount]) => ({
         name: category,
         value: amount,
-        color: categoryColors[category] || '#9CA3AF'
+        color: getCategoryColor ? getCategoryColor(category) : `hsl(${Math.abs(category.split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % 360}, 65%, 55%)`
       }))
       .sort((a, b) => b.value - a.value);
     
-    console.log('🔍 Pie chart data result:', result);
     return result;
-  }, [transactions]);
-
-  // Determine what period we're showing
-  const displayPeriod = useMemo(() => {
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-    
-    const currentMonthExpenses = transactions.filter(t => {
-      const date = new Date(t.date);
-      return date.getMonth() === currentMonth && 
-             date.getFullYear() === currentYear && 
-             t.type === 'Expense';
-    });
-    
-    if (currentMonthExpenses.length > 0) {
-      return 'Current Month';
-    } else {
-      return 'Recent';
-    }
-  }, [transactions]);
+  }, [transactions, getCategoryColor]);
 
   // Month-wise expense trend (last 12 months)
   const monthlyExpenseData = useMemo(() => {
@@ -206,29 +157,15 @@ const AnalyticsView = ({ expenseTracker }) => {
 
   return (
     <div className="space-y-4 sm:space-y-8">
-      {/* Debug Panel - Remove this in production */}
-      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm">
-        <h4 className="font-bold text-yellow-800 mb-2">Debug Info:</h4>
-        <div className="space-y-1 text-yellow-700">
-          <div>Total transactions: {transactions.length}</div>
-          <div>Pie chart categories: {pieChartData.length}</div>
-          <div>Showing period: {displayPeriod}</div>
-          <div>Current month: {new Date().getMonth() + 1}/{new Date().getFullYear()}</div>
-        </div>
-      </div>
-
       {/* Current Month Expense Distribution */}
       <div className="bg-white/80 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-8 border border-white/50">
         <div className="flex items-center justify-between mb-4 sm:mb-6">
           <div>
             <h3 className="text-lg sm:text-xl font-bold text-gray-900">
-              {displayPeriod} Expense Distribution
+              {pieChartData.length > 0 ? 'Current Month Expense Distribution' : 'All-Time Expense Distribution'}
             </h3>
             <p className="text-sm text-gray-600 hidden sm:block">
-              {displayPeriod === 'Current Month' ? 
-                'How your money is allocated across categories this month' : 
-                'Recent expense allocation across categories'
-              }
+              {pieChartData.length > 0 ? 'How your money is allocated across categories this month' : 'Overall expense allocation across all transactions'}
             </p>
           </div>
           <div className="p-2 sm:p-3 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl sm:rounded-2xl">
