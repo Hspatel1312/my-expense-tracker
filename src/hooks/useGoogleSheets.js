@@ -1,737 +1,349 @@
-import { useState, useEffect, useCallback } from 'react';
-import { SHEETS_CONFIG } from '../constants/config';
-import { parseGoogleSheetsDate, getTransactionType } from '../utils/helpers';
+{
+        id: 'transactions',
+        label: 'Transactions',
+        icon: CreditCard,
+        count: expenseTracker.filteredTransactions.lengthimport React, { useState, useEffect } from 'react';
+import { PlusCircle, BarChart3, CreditCard, PieChart, RefreshCw, CheckCircle, AlertTriangle, X } from 'lucide-react';
 
-export const useGoogleSheets = () => {
-  const [sheetsConfig, setSheetsConfig] = useState({
-    ...SHEETS_CONFIG,
-    isConnected: false,
-    lastSync: null
-  });
-  
-  const [syncStatus, setSyncStatus] = useState('idle');
-  const [isLoading, setIsLoading] = useState(false);
-  const [gapiLoaded, setGapiLoaded] = useState(false);
-  const [gisLoaded, setGisLoaded] = useState(false);
+import Header from './components/Header';
+import DashboardView from './components/DashboardView';
+import AnalyticsView from './components/AnalyticsView';
+import TransactionsView from './components/TransactionsView';
+import TransactionForm from './components/TransactionForm';
+import SyncModal from './components/SyncModal';
+import { useExpenseTracker } from './hooks/useExpenseTracker';
+import { useGoogleSheets } from './hooks/useGoogleSheets';
 
-  // Robust amount parser for Indian Rupee format
-  const parseAmount = useCallback((value) => {
-    if (!value) return 0;
+const App = () => {
+  const [currentView, setCurrentView] = useState('dashboard');
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [isFormVisible, setIsFormVisible] = useState(false);
+  const [error, setError] = useState(null);
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  // Custom hooks
+  const expenseTracker = useExpenseTracker();
+  const googleSheets = useGoogleSheets();
+
+  // Function to update app state with data
+  const updateAppState = (data) => {
+    if (!data) return;
     
-    if (typeof value === 'number') {
-      return value;
-    }
+    console.log('📊 Updating app state with data:', data);
     
-    let cleanValue = value.toString().trim()
-      .replace(/^₹\s*/i, '')
-      .replace(/[,\s]/g, '')
-      .replace(/[^\d.-]/g, '')
-      .trim();
-    
-    if (cleanValue === '' || cleanValue === '-') {
-      return 0;
-    }
-    
-    const parsed = parseFloat(cleanValue);
-    return isNaN(parsed) ? 0 : parsed;
-  }, []);
-
-  // Store the token in localStorage
-  const storeToken = useCallback((token) => {
-    try {
-      localStorage.setItem('google_auth_token', JSON.stringify({
-        access_token: token.access_token,
-        expires_at: Date.now() + (3600 * 1000),
-        stored_at: Date.now()
-      }));
-    } catch (error) {
-      console.warn('⚠️ Could not store token:', error);
-    }
-  }, []);
-
-  // Retrieve and validate stored token
-  const getStoredToken = useCallback(() => {
-    try {
-      const stored = localStorage.getItem('google_auth_token');
-      if (stored) {
-        const tokenData = JSON.parse(stored);
-        if (Date.now() < tokenData.expires_at) {
-          return tokenData;
-        } else {
-          localStorage.removeItem('google_auth_token');
-        }
-      }
-    } catch (error) {
-      localStorage.removeItem('google_auth_token');
-    }
-    return null;
-  }, []);
-
-  // Load Google Identity Services
-  const loadGoogleIdentityServices = useCallback(() => {
-    return new Promise((resolve, reject) => {
-      if (window.google && window.google.accounts) {
-        resolve(window.google);
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      
-      script.onload = () => {
-        setGisLoaded(true);
-        resolve(window.google);
-      };
-      
-      script.onerror = () => {
-        reject(new Error('Failed to load Google Identity Services'));
-      };
-
-      document.head.appendChild(script);
-    });
-  }, []);
-
-  // Load Google API Client
-  const loadGoogleAPI = useCallback(() => {
-    return new Promise((resolve, reject) => {
-      if (window.gapi && window.gapi.client) {
-        resolve(window.gapi);
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.src = 'https://apis.google.com/js/api.js';
-      script.async = true;
-      script.defer = true;
-      
-      script.onload = () => {
-        window.gapi.load('client', {
-          callback: () => {
-            setGapiLoaded(true);
-            resolve(window.gapi);
-          },
-          onerror: () => {
-            reject(new Error('Failed to load Google API client'));
-          }
-        });
-      };
-      
-      script.onerror = () => {
-        reject(new Error('Failed to load Google API script'));
-      };
-
-      document.head.appendChild(script);
-    });
-  }, []);
-
-  // Initialize Google API
-  const initializeGoogleAPI = useCallback(async () => {
-    try {
-      const gapi = await loadGoogleAPI();
-      
-      await gapi.client.init({
-        discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4']
-      });
-
-      return gapi;
-    } catch (error) {
-      console.error('❌ Failed to initialize Google API:', error);
-      throw error;
-    }
-  }, [loadGoogleAPI]);
-
-  // 🔥 NEW: Load categories from Google Sheets Data!C2:C
-  const loadCategoriesFromSheets = useCallback(async () => {
-    try {
-      console.log('📋 Loading categories from Google Sheets Data!C2:C...');
-      
-      const response = await window.gapi.client.sheets.spreadsheets.values.get({
-        spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-        range: 'Data!C2:C' // Categories starting from row 2
-      });
-
-      const rows = response.result.values || [];
-      const categories = [];
-      
-      rows.forEach((row) => {
-        if (row && row[0] && row[0].trim()) {
-          const categoryName = row[0].trim();
-          // Parse category format (could be "Main > Sub" or just "Category")
-          const parts = categoryName.split('>').map(part => part.trim());
-          
-          categories.push({
-            main: parts[0] || categoryName,
-            sub: parts[1] || parts[0] || categoryName,
-            combined: categoryName
-          });
-        }
-      });
-
-      console.log('✅ Categories loaded from sheets:', categories.length);
-      console.log('📋 Sample categories:', categories.slice(0, 5));
-      
-      return categories;
-    } catch (error) {
-      console.error('❌ Failed to load categories from sheets:', error);
-      // Return fallback categories
-      return [
-        { main: 'Food', sub: 'Food', combined: 'Food > Food' },
-        { main: 'Income', sub: 'Income', combined: 'Income > Income' }
-      ];
-    }
-  }, []);
-
-  // 🔥 ENHANCED: Determine transaction type based on category
-  const getTransactionTypeFromCategory = useCallback((category) => {
-    if (!category) return 'Expense';
-    
-    const categoryLower = category.toLowerCase();
-    
-    // Check if category contains income-related keywords
-    if (categoryLower.includes('income') || 
-        categoryLower.includes('salary') || 
-        categoryLower.includes('reload') ||
-        categoryLower.includes('refund') ||
-        categoryLower.includes('others') && categoryLower.includes('income')) {
-      return 'Income';
+    if (data.balances) {
+      expenseTracker.setBalances(data.balances);
     }
     
-    // Check for transfer keywords
-    if (categoryLower.includes('transfer') || 
-        categoryLower.includes('withdrawal') ||
-        categoryLower.includes('deposit')) {
-      return 'Transfer';
+    if (data.accounts) {
+      expenseTracker.updateMasterData({ accounts: data.accounts });
     }
     
-    // Default to Expense for all other categories
-    return 'Expense';
-  }, []);
-
-  // Process transaction data with timezone-safe date parsing
-  const processTransactionData = useCallback((transactionData) => {
-    const transactionRows = transactionData.values || [];
-    const dataRows = transactionRows.slice(1);
-    
-    const transactions = dataRows
-      .filter(row => row && row.length > 3 && row[0] && row[1] && row[2] && row[3])
-      .map((row, index) => {
-        const amount = parseAmount(row[1]);
-        const parsedDate = parseGoogleSheetsDate(row[0]);
-        
-        // Use calculated type from column I, or determine from category
-        let transactionType = row[8] || ''; // Column I (calculated)
-        if (!transactionType) {
-          transactionType = getTransactionTypeFromCategory(row[2] || '');
-        }
-        
-        return {
-          id: `sheet_${index}_${Date.now()}_${Math.random()}`,
-          date: parsedDate,
-          amount: amount,
-          category: row[2] || '',
-          description: row[3] || '',
-          tag: row[4] || '',
-          account: row[5] || '',
-          type: transactionType,
-          synced: true,
-          source: 'sheets',
-          sheetRow: index + 2 // Row number in sheet (accounting for header)
-        };
-      });
-    
-    return transactions;
-  }, [parseAmount, getTransactionTypeFromCategory]);
-
-  // Enhanced check for existing authentication
-  const checkExistingAuth = useCallback(async () => {
-    try {
-      if (!gapiLoaded || !gisLoaded) return false;
-      
-      const storedToken = getStoredToken();
-      if (!storedToken) {
-        return false;
-      }
-      
-      window.gapi.client.setToken({
-        access_token: storedToken.access_token
-      });
-      
-      try {
-        const testResponse = await window.gapi.client.sheets.spreadsheets.get({
-          spreadsheetId: SHEETS_CONFIG.spreadsheetId
-        });
-        
-        setSheetsConfig(prev => ({
-          ...prev,
-          isConnected: true,
-          lastSync: new Date().toISOString()
-        }));
-        
-        // Load all data including categories
-        const [balanceData, transactionData, categories] = await Promise.all([
-          window.gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-            range: 'Data!E:G'
-          }),
-          window.gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-            range: SHEETS_CONFIG.TRANSACTIONS_RANGE
-          }),
-          loadCategoriesFromSheets() // 🔥 Load categories from sheets
-        ]);
-        
-        // Process account balance data
-        const balanceRows = balanceData.result.values || [];
-        const newBalances = {};
-        const accountsList = [];
-        
-        balanceRows.forEach((row, index) => {
-          if (row && row[0]) {
-            const accountName = row[0].toString().trim();
-            
-            if (accountName && 
-                accountName !== 'Accounts' && 
-                accountName !== 'Account' &&
-                accountName !== '' &&
-                !accountName.toLowerCase().includes('balance')) {
-              
-              let endingBalance = 0;
-              if (row[2]) {
-                endingBalance = parseAmount(row[2]);
-              }
-              
-              newBalances[accountName] = endingBalance;
-              accountsList.push(accountName);
-            }
-          }
-        });
-        
-        const transactions = processTransactionData(transactionData.result);
-        
-        return {
-          balances: newBalances,
-          accounts: accountsList,
-          transactions: transactions,
-          categories: categories // 🔥 Include categories
-        };
-        
-      } catch (error) {
-        window.gapi.client.setToken(null);
-        localStorage.removeItem('google_auth_token');
-        return false;
-      }
-      
-    } catch (error) {
-      localStorage.removeItem('google_auth_token');
-      return false;
-    }
-  }, [gapiLoaded, gisLoaded, getStoredToken, parseAmount, processTransactionData, loadCategoriesFromSheets]);
-
-  // Authenticate and test
-  const authenticateAndTest = useCallback(() => {
-    return new Promise((resolve, reject) => {
-      try {
-        const client = window.google.accounts.oauth2.initTokenClient({
-          client_id: SHEETS_CONFIG.clientId,
-          scope: 'https://www.googleapis.com/auth/spreadsheets',
-          callback: async (response) => {
-            if (response.error) {
-              reject(new Error(`OAuth error: ${response.error}`));
-              return;
-            }
-            
-            window.gapi.client.setToken({
-              access_token: response.access_token
-            });
-            
-            storeToken({ access_token: response.access_token });
-            
-            setTimeout(async () => {
-              try {
-                const testResponse = await window.gapi.client.sheets.spreadsheets.get({
-                  spreadsheetId: SHEETS_CONFIG.spreadsheetId
-                });
-                
-                const [balanceData, transactionData, categories] = await Promise.all([
-                  window.gapi.client.sheets.spreadsheets.values.get({
-                    spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-                    range: 'Data!E:G'
-                  }),
-                  window.gapi.client.sheets.spreadsheets.values.get({
-                    spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-                    range: SHEETS_CONFIG.TRANSACTIONS_RANGE
-                  }),
-                  loadCategoriesFromSheets() // 🔥 Load categories
-                ]);
-                
-                resolve({
-                  spreadsheet: testResponse.result,
-                  balanceData: balanceData.result,
-                  transactionData: transactionData.result,
-                  categories: categories // 🔥 Include categories
-                });
-                
-              } catch (testError) {
-                reject(testError);
-              }
-            }, 3000);
-          },
-          error_callback: (error) => {
-            reject(new Error(`OAuth error: ${error}`));
-          }
-        });
-        
-        client.requestAccessToken();
-        
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }, [storeToken, loadCategoriesFromSheets]);
-
-  // Connect to Google Sheets
-  const connectToGoogleSheets = useCallback(async () => {
-    setSyncStatus('syncing');
-    setIsLoading(true);
-
-    try {
-      await Promise.all([
-        loadGoogleAPI(),
-        loadGoogleIdentityServices()
-      ]);
-      
-      await initializeGoogleAPI();
-      const connectionResult = await authenticateAndTest();
-      
-      let returnData = { balances: {}, accounts: [], transactions: [], categories: [] };
-      
-      if (connectionResult.balanceData && connectionResult.transactionData) {
-        // Process balance data
-        const balanceRows = connectionResult.balanceData.values || [];
-        const newBalances = {};
-        const accountsList = [];
-        
-        balanceRows.forEach((row, index) => {
-          if (row && row[0]) {
-            const accountName = row[0].toString().trim();
-            
-            if (accountName && 
-                accountName !== 'Accounts' && 
-                accountName !== 'Account' &&
-                accountName !== '' &&
-                !accountName.toLowerCase().includes('balance')) {
-              
-              let endingBalance = 0;
-              if (row[2]) {
-                endingBalance = parseAmount(row[2]);
-              }
-              
-              newBalances[accountName] = endingBalance;
-              accountsList.push(accountName);
-            }
-          }
-        });
-        
-        const transactions = processTransactionData(connectionResult.transactionData);
-        
-        returnData = {
-          balances: newBalances,
-          accounts: accountsList,
-          transactions: transactions,
-          categories: connectionResult.categories || [] // 🔥 Include categories
-        };
-      }
-      
-      setSheetsConfig(prev => ({
-        ...prev,
-        isConnected: true,
-        lastSync: new Date().toISOString()
-      }));
-      
-      setSyncStatus('success');
-      return returnData;
-      
-    } catch (error) {
-      console.error('❌ Connection failed:', error);
-      setSyncStatus('error');
-      setSheetsConfig(prev => ({ ...prev, isConnected: false }));
-      localStorage.removeItem('google_auth_token');
-      throw error;
-    } finally {
-      setIsLoading(false);
-      setTimeout(() => setSyncStatus('idle'), 3000);
-    }
-  }, [loadGoogleAPI, loadGoogleIdentityServices, initializeGoogleAPI, authenticateAndTest, parseAmount, processTransactionData]);
-
-  // Load account balances
-  const loadAccountBalances = useCallback(async () => {
-    try {
-      const currentToken = window.gapi.client.getToken();
-      if (!currentToken || !currentToken.access_token) {
-        await connectToGoogleSheets();
-      }
-
-      const response = await window.gapi.client.sheets.spreadsheets.values.get({
-        spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-        range: 'Data!E:G'
-      });
-
-      const rows = response.result.values || [];
-      const newBalances = {};
-      const accountsList = [];
-
-      rows.forEach((row, index) => {
-        if (row && row[0]) {
-          const accountName = row[0].toString().trim();
-          
-          if (accountName && 
-              accountName !== 'Accounts' && 
-              accountName !== 'Account' &&
-              accountName !== '' &&
-              !accountName.toLowerCase().includes('balance')) {
-            
-            let endingBalance = 0;
-            if (row[2]) {
-              endingBalance = parseAmount(row[2]);
-            }
-            
-            newBalances[accountName] = endingBalance;
-            accountsList.push(accountName);
-          }
-        }
-      });
-
-      return { balances: newBalances, accounts: accountsList };
-    } catch (error) {
-      console.error('❌ Failed to load account balances:', error);
-      return { balances: {}, accounts: [] };
-    }
-  }, [connectToGoogleSheets, parseAmount]);
-
-  // Load transactions
-  const loadTransactions = useCallback(async () => {
-    try {
-      const currentToken = window.gapi.client.getToken();
-      if (!currentToken || !currentToken.access_token) {
-        await connectToGoogleSheets();
-      }
-
-      const response = await window.gapi.client.sheets.spreadsheets.values.get({
-        spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-        range: SHEETS_CONFIG.TRANSACTIONS_RANGE
-      });
-
-      const transactions = processTransactionData(response.result);
-      return transactions;
-    } catch (error) {
-      console.error('❌ Failed to load transactions:', error);
-      return [];
-    }
-  }, [connectToGoogleSheets, processTransactionData]);
-
-  // 🔥 Add transaction to sheets (only A-F columns)
-  const addTransactionToSheets = useCallback(async (transaction) => {
-    try {
-      if (!sheetsConfig.isConnected) {
-        console.log('📝 Not connected to sheets, skipping add operation');
-        return false;
-      }
-
-      console.log('📝 Adding transaction to sheets:', transaction);
-
-      const readResponse = await window.gapi.client.sheets.spreadsheets.values.get({
-        spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-        range: SHEETS_CONFIG.TRANSACTIONS_RANGE
-      });
-      
-      const lastRow = (readResponse.result.values?.length || 1) + 1;
-      
-      // 🔥 IMPORTANT: Only update columns A-F, let G, H, I be calculated by Google Sheets
-      await window.gapi.client.sheets.spreadsheets.values.append({
-        spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-        range: `Transactions!A${lastRow}:F${lastRow}`, // Only A-F columns
-        valueInputOption: 'USER_ENTERED',
-        resource: {
-          values: [[
-            transaction.date,        // A: Date
-            transaction.amount,      // B: Amount
-            transaction.category,    // C: Category
-            transaction.description, // D: Description
-            transaction.tag,         // E: Tag
-            transaction.account      // F: Account
-            // G, H, I will be calculated by Google Sheets formulas
-          ]]
-        }
-      });
-
-      console.log('✅ Transaction added to sheet at row:', lastRow);
-      return true;
-    } catch (error) {
-      console.error('❌ Failed to add transaction to sheets:', error);
-      return false;
-    }
-  }, [sheetsConfig.isConnected]);
-
-  // 🔥 FIXED: Update transaction in sheets (only A-F columns)
-  const updateTransactionInSheets = useCallback(async (transaction) => {
-    try {
-      if (!sheetsConfig.isConnected || !transaction.sheetRow) {
-        console.log('📝 Cannot update - not connected or no sheet row:', {
-          connected: sheetsConfig.isConnected,
-          sheetRow: transaction.sheetRow
-        });
-        return false;
-      }
-
-      console.log('📝 Updating transaction in sheet row:', transaction.sheetRow, transaction);
-
-      // 🔥 IMPORTANT: Only update columns A-F, preserve calculated columns G, H, I
-      await window.gapi.client.sheets.spreadsheets.values.update({
-        spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-        range: `Transactions!A${transaction.sheetRow}:F${transaction.sheetRow}`, // Only A-F columns
-        valueInputOption: 'USER_ENTERED',
-        resource: {
-          values: [[
-            transaction.date,        // A: Date
-            transaction.amount,      // B: Amount
-            transaction.category,    // C: Category
-            transaction.description, // D: Description
-            transaction.tag,         // E: Tag
-            transaction.account      // F: Account
-            // G, H, I will remain as calculated by Google Sheets formulas
-          ]]
-        }
-      });
-
-      console.log('✅ Transaction updated in sheet (A-F columns only)');
-      return true;
-    } catch (error) {
-      console.error('❌ Failed to update transaction in sheets:', error);
-      return false;
-    }
-  }, [sheetsConfig.isConnected]);
-
-  // Delete transaction from sheets
-  const deleteTransactionFromSheets = useCallback(async (transaction) => {
-    try {
-      if (!sheetsConfig.isConnected || !transaction.sheetRow) {
-        console.log('📝 Cannot delete - not connected or no sheet row:', {
-          connected: sheetsConfig.isConnected,
-          sheetRow: transaction.sheetRow
-        });
-        return false;
-      }
-
-      console.log('📝 Deleting transaction from sheet row:', transaction.sheetRow);
-
-      // Clear the entire row (A-I)
-      await window.gapi.client.sheets.spreadsheets.values.update({
-        spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-        range: `Transactions!A${transaction.sheetRow}:I${transaction.sheetRow}`,
-        valueInputOption: 'USER_ENTERED',
-        resource: {
-          values: [['', '', '', '', '', '', '', '', '']]
-        }
-      });
-
-      console.log('✅ Transaction deleted from sheet');
-      return true;
-    } catch (error) {
-      console.error('❌ Failed to delete transaction from sheets:', error);
-      return false;
-    }
-  }, [sheetsConfig.isConnected]);
-
-  // Manual sync
-  const manualSync = useCallback(async () => {
-    if (!sheetsConfig.isConnected) {
-      await connectToGoogleSheets();
+    if (data.categories) {
+      console.log('📂 Setting categories:', data.categories.length, 'categories');
+      expenseTracker.updateMasterData({ categories: data.categories });
     }
     
-    setSyncStatus('syncing');
-    try {
-      const [balanceData, transactionData, categories] = await Promise.all([
-        loadAccountBalances(),
-        loadTransactions(),
-        loadCategoriesFromSheets() // 🔥 Load categories
-      ]);
-      
-      setSheetsConfig(prev => ({
-        ...prev,
-        lastSync: new Date().toISOString()
-      }));
-      
-      setSyncStatus('success');
-      return { 
-        ...balanceData, 
-        transactions: transactionData, 
-        categories: categories // 🔥 Include categories
-      };
-    } catch (error) {
-      setSyncStatus('error');
-      throw error;
-    } finally {
-      setTimeout(() => setSyncStatus('idle'), 3000);
+    if (data.transactions) {
+      expenseTracker.setTransactions(data.transactions);
     }
-  }, [sheetsConfig.isConnected, connectToGoogleSheets, loadAccountBalances, loadTransactions, loadCategoriesFromSheets]);
+    
+    setDataLoaded(true);
+    console.log('✅ App state updated successfully');
+  };
 
-  // Initialize APIs and check for existing auth on mount
+  // Handle connection success with immediate data
   useEffect(() => {
-    const initializeAndCheck = async () => {
-      try {
-        await Promise.all([
-          loadGoogleAPI(),
-          loadGoogleIdentityServices()
-        ]);
-        
-        await initializeGoogleAPI();
-        
-        const storedToken = getStoredToken();
-        if (storedToken) {
-          window.gapi.client.setToken({
-            access_token: storedToken.access_token
-          });
-          
-          try {
-            await window.gapi.client.sheets.spreadsheets.get({
-              spreadsheetId: SHEETS_CONFIG.spreadsheetId
-            });
-            
-            setSheetsConfig(prev => ({ ...prev, isConnected: true }));
-            
-            const existingData = await checkExistingAuth();
-            if (existingData) {
-              window.expenseTrackerData = existingData;
-            }
-            
-          } catch (error) {
-            localStorage.removeItem('google_auth_token');
-          }
+    // Check for data loaded during connection
+    if (window.expenseTrackerData && !dataLoaded) {
+      console.log('🎯 Found data from connection, using immediately...');
+      const data = window.expenseTrackerData;
+      updateAppState(data);
+      // Clear the temporary storage
+      delete window.expenseTrackerData;
+    }
+  }, [dataLoaded]);
+
+  // Handle connection state changes
+  useEffect(() => {
+    const handleConnectionChange = async () => {
+      if (googleSheets.sheetsConfig.isConnected && !dataLoaded && !window.expenseTrackerData) {
+        console.log('🔄 Connection established, syncing data...');
+        try {
+          const data = await googleSheets.manualSync();
+          updateAppState(data);
+        } catch (error) {
+          console.error('❌ Sync failed:', error);
+          setError('Failed to sync with Google Sheets');
         }
-        
-      } catch (error) {
-        console.error('❌ Initialization failed:', error);
       }
     };
-    
-    initializeAndCheck();
-  }, [loadGoogleAPI, loadGoogleIdentityServices, initializeGoogleAPI, getStoredToken, checkExistingAuth]);
 
-  return {
-    sheetsConfig,
-    syncStatus,
-    isLoading,
-    gapiLoaded: gapiLoaded && gisLoaded,
-    connectToGoogleSheets,
-    manualSync,
-    addTransactionToSheets,
-    updateTransactionInSheets,
-    deleteTransactionFromSheets,
-    loadAccountBalances,
-    loadTransactions,
-    loadCategoriesFromSheets, // 🔥 NEW: Expose category loading
-    getTransactionTypeFromCategory // 🔥 NEW: Expose type detection
+    handleConnectionChange();
+  }, [googleSheets.sheetsConfig.isConnected, googleSheets.manualSync, dataLoaded]);
+
+  // Handle form submission
+  const handleAddTransaction = async () => {
+    const success = await expenseTracker.addTransaction(
+      googleSheets.addTransactionToSheets
+    );
+    
+    if (success) {
+      setIsFormVisible(false);
+    }
   };
+
+  // Handle edit transaction
+  const handleEditTransaction = (transaction) => {
+    expenseTracker.editTransaction(transaction);
+    setIsFormVisible(true);
+  };
+
+  // Handle manual sync
+  const handleManualSync = async () => {
+    try {
+      console.log('🔄 Manual sync requested...');
+      const data = await googleSheets.manualSync();
+      updateAppState(data);
+    } catch (error) {
+      console.error('❌ Manual sync failed:', error);
+      setError('Failed to sync with Google Sheets');
+    }
+  };
+
+  // Handle connection with data loading
+  const handleConnect = async () => {
+    try {
+      console.log('🔄 Connecting to Google Sheets...');
+      const data = await googleSheets.connectToGoogleSheets();
+      updateAppState(data);
+    } catch (error) {
+      console.error('❌ Connection failed:', error);
+      setError('Failed to connect to Google Sheets');
+    }
+  };
+
+  // Navigation items
+  const navigationItems = [
+    {
+      id: 'dashboard',
+      label: 'Dashboard',
+      icon: BarChart3,
+      component: <DashboardView expenseTracker={expenseTracker} googleSheets={googleSheets} />
+    },
+    {
+      id: 'analytics',
+      label: 'Analytics',
+      icon: PieChart,
+      component: <AnalyticsView expenseTracker={expenseTracker} />
+    },
+    {
+      id: 'transactions',
+      label: 'Transactions',
+      icon: CreditCard,
+      count: expenseTracker.filteredTransactions.length,
+      component: <TransactionsView expenseTracker={expenseTracker} onEditTransaction={handleEditTransaction} />
+    }
+  ];
+
+  return (
+    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
+      {/* Add mobile-specific styles */}
+      <style jsx global>{`
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        
+        /* Ensure viewport meta tag behavior */
+        @media (max-width: 640px) {
+          body {
+            overflow-x: hidden;
+          }
+        }
+      `}</style>
+
+      {/* Loading Overlay */}
+      {googleSheets.isLoading && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-2xl mx-4">
+            <div className="flex items-center space-x-3">
+              <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
+              <span className="text-base sm:text-lg font-medium">
+                {expenseTracker.editingTransaction ? 'Updating transaction...' : 'Syncing with Google Sheets...'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Banner */}
+      {error && (
+        <div className="fixed top-4 left-4 right-4 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 z-50 max-w-md sm:w-full">
+          <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl shadow-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                <span className="font-medium text-sm sm:text-base">{error}</span>
+              </div>
+              <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800 ml-2">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Category Loading Status */}
+      {dataLoaded && expenseTracker.masterData.categories.length === 0 && googleSheets.sheetsConfig.isConnected && (
+        <div className="fixed top-20 left-4 right-4 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 z-40 max-w-md sm:w-full">
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl shadow-lg">
+            <div className="flex items-center space-x-3">
+              <RefreshCw className="w-4 h-4 animate-spin flex-shrink-0" />
+              <span className="font-medium text-sm">Loading categories from Google Sheets...</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <Header 
+        transactions={expenseTracker.transactions}
+        sheetsConfig={googleSheets.sheetsConfig}
+        gapiLoaded={googleSheets.gapiLoaded}
+        balanceVisible={expenseTracker.balanceVisible}
+        totalBalance={expenseTracker.totalBalance}
+        setBalanceVisible={expenseTracker.setBalanceVisible}
+        setShowSyncModal={setShowSyncModal}
+      />
+
+      {/* Navigation - Fixed Sticky Navigation */}
+      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-xl border-b border-gray-200/60 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Mobile Navigation - Horizontal Scroll */}
+          <nav className="flex space-x-1 sm:space-x-8 overflow-x-auto scrollbar-hide py-2 sm:py-0">
+            {navigationItems.map((item) => {
+              const IconComponent = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setCurrentView(item.id)}
+                  className={`py-3 sm:py-4 px-4 sm:px-1 border-b-2 font-semibold text-xs sm:text-sm transition-all duration-300 whitespace-nowrap flex-shrink-0 min-w-0 ${
+                    currentView === item.id
+                      ? 'border-blue-500 text-blue-600 bg-blue-50/80'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50/50'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row items-center space-y-1 sm:space-y-0 sm:space-x-2">
+                    <IconComponent className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                    <span className="truncate">
+                      {item.label}
+                      {item.count !== undefined && (
+                        <span className="ml-1 text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full">
+                          {item.count}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      </div>
+
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 pt-6 sm:pt-8">
+        {/* Sync Status Banner */}
+        {googleSheets.syncStatus !== 'idle' && (
+          <div className={`mb-4 sm:mb-6 p-3 sm:p-4 rounded-xl border text-sm sm:text-base ${
+            googleSheets.syncStatus === 'success' ? 'bg-green-50 border-green-200 text-green-800' :
+            googleSheets.syncStatus === 'error' ? 'bg-red-50 border-red-200 text-red-800' :
+            'bg-blue-50 border-blue-200 text-blue-800'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2 sm:space-x-3">
+                {googleSheets.syncStatus === 'syncing' && <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5 animate-spin flex-shrink-0" />}
+                {googleSheets.syncStatus === 'success' && <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />}
+                {googleSheets.syncStatus === 'error' && <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />}
+                <span className="font-medium">
+                  {googleSheets.syncStatus === 'syncing' && 'Syncing with Google Sheets...'}
+                  {googleSheets.syncStatus === 'success' && `Successfully synced! ${expenseTracker.masterData.categories.length} categories loaded.`}
+                  {googleSheets.syncStatus === 'error' && 'Failed to sync with Google Sheets. Please try again.'}
+                </span>
+              </div>
+              {googleSheets.syncStatus === 'error' && (
+                <button
+                  onClick={handleManualSync}
+                  className="px-2 sm:px-3 py-1 bg-red-600 text-white rounded-lg text-xs sm:text-sm hover:bg-red-700 transition-colors flex-shrink-0"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Data Status Info */}
+        {dataLoaded && (
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-blue-50 border border-blue-200 rounded-xl">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-blue-800 font-medium">
+                📊 Data Status: {expenseTracker.transactions.length} transactions, {expenseTracker.masterData.categories.length} categories, {Object.keys(expenseTracker.balances).length} accounts
+              </span>
+              {!googleSheets.sheetsConfig.isConnected && (
+                <button
+                  onClick={handleConnect}
+                  className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors"
+                >
+                  Connect Sheets
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Main Content */}
+        {navigationItems.find(item => item.id === currentView)?.component}
+      </div>
+
+      {/* Quick Add Button - Mobile Optimized */}
+      <div className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-50">
+        <button
+          onClick={() => setIsFormVisible(true)}
+          className="group relative bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white p-3 sm:p-4 rounded-full shadow-2xl hover:shadow-3xl transform hover:scale-110 transition-all duration-300 border-2 border-white/20"
+        >
+          <PlusCircle className="w-5 h-5 sm:w-6 sm:h-6" />
+          
+          {/* Mobile Label */}
+          <span className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-3 py-1 rounded-lg text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap sm:hidden">
+            Add Transaction
+          </span>
+        </button>
+      </div>
+
+      {/* Transaction Form Modal */}
+      <TransactionForm
+        isVisible={isFormVisible}
+        onClose={() => setIsFormVisible(false)}
+        expenseTracker={expenseTracker}
+        googleSheets={googleSheets}
+        onSubmit={handleAddTransaction}
+      />
+
+      {/* Google Sheets Sync Modal */}
+      <SyncModal
+        isVisible={showSyncModal}
+        onClose={() => setShowSyncModal(false)}
+        googleSheets={googleSheets}
+        expenseTracker={expenseTracker}
+        onConnect={handleConnect}
+        onManualSync={handleManualSync}
+      />
+    </div>
+  );
 };
+
+export default App;
