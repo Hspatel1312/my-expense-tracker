@@ -3,6 +3,13 @@ import { Search, Filter, Edit, Trash2, Calendar, DollarSign, Tag, CreditCard, X,
 import { parseCategory, months, getYears } from '../utils/helpers';
 
 const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransaction }) => {
+  console.log('🔍 TransactionsView props:', {
+    hasExpenseTracker: !!expenseTracker,
+    hasOnEditTransaction: !!onEditTransaction,
+    hasOnDeleteTransaction: !!onDeleteTransaction,
+    onDeleteTransactionType: typeof onDeleteTransaction
+  });
+
   const {
     filteredTransactions,
     filters,
@@ -194,7 +201,10 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransacti
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => onDeleteTransaction(transaction.id)}
+                        onClick={() => {
+                          console.log('🖱️ Mobile delete button clicked for transaction:', transaction.id);
+                          onDeleteTransaction(transaction.id);
+                        }}
                         className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -255,7 +265,10 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransacti
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => onDeleteTransaction(transaction.id)}
+                          onClick={() => {
+                            console.log('🖱️ Desktop delete button clicked for transaction:', transaction.id);
+                            onDeleteTransaction(transaction.id);
+                          }}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                         >
                           <Trash2 className="w-4 h-4" />
