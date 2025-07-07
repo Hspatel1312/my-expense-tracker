@@ -2,7 +2,7 @@ import React from 'react';
 import { Search, Filter, Edit, Trash2, Calendar, DollarSign, Tag, CreditCard, X, ChevronDown } from 'lucide-react';
 import { parseCategory, months, getYears } from '../utils/helpers';
 
-const TransactionsView = ({ expenseTracker, onEditTransaction }) => {
+const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransaction }) => {
   const {
     filteredTransactions,
     filters,
@@ -10,7 +10,6 @@ const TransactionsView = ({ expenseTracker, onEditTransaction }) => {
     showFilters,
     setShowFilters,
     clearFilters,
-    deleteTransaction,
     masterData,
     uniqueMainCategories,
     getCategoryColor
@@ -195,7 +194,7 @@ const TransactionsView = ({ expenseTracker, onEditTransaction }) => {
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => deleteTransaction(transaction.id)}
+                        onClick={() => onDeleteTransaction(transaction.id)}
                         className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -256,7 +255,7 @@ const TransactionsView = ({ expenseTracker, onEditTransaction }) => {
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => deleteTransaction(transaction.id)}
+                          onClick={() => onDeleteTransaction(transaction.id)}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                         >
                           <Trash2 className="w-4 h-4" />
