@@ -76,21 +76,51 @@ const App = () => {
     handleConnectionChange();
   }, [googleSheets.sheetsConfig.isConnected, googleSheets.manualSync, dataLoaded]);
 
-  // Handle form submission
+  // 🔥 FIXED: Handle form submission with proper edit/add logic
   const handleAddTransaction = async () => {
-    const success = await expenseTracker.addTransaction(
-      googleSheets.addTransactionToSheets
-    );
+    console.log('📝 Handling transaction submission...');
+    console.log('📝 Editing transaction:', expenseTracker.editingTransaction);
+    
+    // Pass the sheets operations object with all CRUD methods
+    const sheetsOperations = {
+      addTransactionToSheets: googleSheets.addTransactionToSheets,
+      updateTransactionInSheets: googleSheets.updateTransactionInSheets,
+      deleteTransactionFromSheets: googleSheets.deleteTransactionFromSheets
+    };
+    
+    const success = await expenseTracker.addTransaction(sheetsOperations);
     
     if (success) {
       setIsFormVisible(false);
+      console.log('✅ Transaction submission successful');
+    } else {
+      console.log('❌ Transaction submission failed');
     }
   };
 
   // Handle edit transaction
   const handleEditTransaction = (transaction) => {
+    console.log('📝 App: Starting edit for transaction:', transaction);
     expenseTracker.editTransaction(transaction);
     setIsFormVisible(true);
+  };
+
+  // 🔥 FIXED: Handle delete transaction with sheets sync
+  const handleDeleteTransaction = async (transactionId) => {
+    console.log('🗑️ App: Handling delete for transaction:', transactionId);
+    
+    // Pass the sheets operations for deletion
+    const sheetsOperations = {
+      deleteTransactionFromSheets: googleSheets.deleteTransactionFromSheets
+    };
+    
+    const success = await expenseTracker.deleteTransaction(transactionId, sheetsOperations);
+    
+    if (success) {
+      console.log('✅ Transaction deletion successful');
+    } else {
+      console.log('❌ Transaction deletion cancelled or failed');
+    }
   };
 
   // Handle manual sync
@@ -124,7 +154,13 @@ const App = () => {
       label: 'Transactions',
       icon: CreditCard,
       count: expenseTracker.filteredTransactions.length,
-      component: <TransactionsView expenseTracker={expenseTracker} onEditTransaction={handleEditTransaction} />
+      component: (
+        <TransactionsView 
+          expenseTracker={expenseTracker} 
+          onEditTransaction={handleEditTransaction}
+          onDeleteTransaction={handleDeleteTransaction} // 🔥 Pass delete handler
+        />
+      )
     }
   ];
 
