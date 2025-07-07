@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { masterCategories, categoryColors } from '../constants/categories';
-import { parseCategory, validateForm } from '../utils/helpers';
+import { categoryColors } from '../constants/categories';
+import { getTransactionType, parseCategory } from '../utils/helpers';
 
 export const useExpenseTracker = () => {
   const [transactions, setTransactions] = useState([]);
@@ -8,9 +8,8 @@ export const useExpenseTracker = () => {
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [editingTransaction, setEditingTransaction] = useState(null);
 
-  // 🔥 UPDATED: Initialize with fallback categories, will be updated from Google Sheets
   const [masterData, setMasterData] = useState({
-    categories: masterCategories, // Will be replaced with Google Sheets data
+    categories: [], // Will be loaded dynamically from Google Sheets
     accounts: []
   });
 
@@ -37,39 +36,22 @@ export const useExpenseTracker = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
 
-  // Enhanced transaction type detection based on categories
-  const getTransactionTypeFromCategory = (category, categoriesList = masterData.categories) => {
-    if (!category) return 'Expense';
-    
-    const categoryLower = category.toLowerCase();
-    
-    // Check if this category exists in our categories list and contains income-related terms
-    const categoryInfo = categoriesList.find(cat => 
-      cat.combined.toLowerCase() === categoryLower ||
-      cat.main.toLowerCase() === categoryLower ||
-      cat.sub.toLowerCase() === categoryLower
-    );
-    
-    // Check for income keywords in the category
-    if (categoryLower.includes('income') || 
-        categoryLower.includes('salary') || 
-        categoryLower.includes('reload') ||
-        categoryLower.includes('refund') ||
-        categoryLower.includes('bonus') ||
-        categoryLower.includes('dividend') ||
-        (categoryLower.includes('others') && categoryLower.includes('income'))) {
-      return 'Income';
+  // Helper function to generate category colors dynamically
+  const getCategoryColor = (mainCategory) => {
+    // Use predefined colors if available, otherwise generate a consistent color
+    if (categoryColors[mainCategory]) {
+      return categoryColors[mainCategory];
     }
     
-    // Check for transfer keywords
-    if (categoryLower.includes('transfer') || 
-        categoryLower.includes('withdrawal') ||
-        categoryLower.includes('deposit')) {
-      return 'Transfer';
+    // Generate a consistent color based on category name
+    let hash = 0;
+    for (let i = 0; i < mainCategory.length; i++) {
+      hash = mainCategory.charCodeAt(i) + ((hash << 5) - hash);
     }
     
-    // Default to Expense for all other categories
-    return 'Expense';
+    // Convert hash to HSL color (good saturation and lightness)
+    const hue = Math.abs(hash) % 360;
+    return `hsl(${hue}, 65%, 55%)`;
   };
 
   // Computed values
@@ -81,79 +63,55 @@ export const useExpenseTracker = () => {
   const currentYear = new Date().getFullYear();
 
   const currentMonthTransactions = useMemo(() => {
-    const filtered = transactions.filter(t => {
+    return transactions.filter(t => {
       const date = new Date(t.date);
-      const isCurrentMonth = date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-      return isCurrentMonth;
+      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
     });
-    
-    return filtered;
   }, [transactions, currentMonth, currentYear]);
 
   const currentMonthIncome = useMemo(() => {
-    const income = currentMonthTransactions
+    return currentMonthTransactions
       .filter(t => t.type === 'Income')
       .reduce((sum, t) => sum + t.amount, 0);
-    
-    return income;
   }, [currentMonthTransactions]);
 
   const currentMonthExpenses = useMemo(() => {
-    const expenses = currentMonthTransactions
+    return currentMonthTransactions
       .filter(t => t.type === 'Expense')
       .reduce((sum, t) => sum + t.amount, 0);
-    
-    return expenses;
   }, [currentMonthTransactions]);
 
   const savingsRate = useMemo(() => {
     if (currentMonthIncome === 0) return 0;
-    const rate = ((currentMonthIncome - currentMonthExpenses) / currentMonthIncome) * 100;
-    return rate;
+    return ((currentMonthIncome - currentMonthExpenses) / currentMonthIncome) * 100;
   }, [currentMonthIncome, currentMonthExpenses]);
 
-  // Fixed topCategories calculation
+  // Top categories using main category for grouping
   const topCategories = useMemo(() => {
-    // Get current month expense transactions
-    const currentMonthExpenseTransactions = currentMonthTransactions.filter(t => t.type === 'Expense');
-    
-    // Use current month expenses, or fall back to recent if none
-    let transactionsToUse = currentMonthExpenseTransactions;
-    
-    if (transactionsToUse.length === 0) {
-      // Get expenses from last 30 days
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
-      transactionsToUse = transactions.filter(t => {
-        const date = new Date(t.date);
-        return t.type === 'Expense' && date >= thirtyDaysAgo;
-      });
-    }
-    
     const categoryTotals = {};
+    currentMonthTransactions
+      .filter(t => t.type === 'Expense')
+      .forEach(t => {
+        const categoryData = parseCategory(t.category);
+        const main = categoryData.main || 'Unknown';
+        categoryTotals[main] = (categoryTotals[main] || 0) + t.amount;
+      });
     
-    transactionsToUse.forEach(t => {
-      const categoryData = parseCategory(t.category);
-      const main = categoryData.main || 'Unknown';
-      categoryTotals[main] = (categoryTotals[main] || 0) + t.amount;
-    });
-    
-    const result = Object.entries(categoryTotals)
+    return Object.entries(categoryTotals)
       .sort(([,a], [,b]) => b - a)
       .slice(0, 5);
-    
-    return result;
-  }, [currentMonthTransactions, transactions]);
+  }, [currentMonthTransactions]);
 
+  // Pie chart data with dynamic colors
   const pieChartData = useMemo(() => {
     return topCategories.map(([category, amount]) => ({
       name: category,
       value: amount,
-      color: categoryColors[category] || '#9CA3AF'
+      color: getCategoryColor(category)
     }));
   }, [topCategories]);
 
+  // Filtered transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter(transaction => {
       const matchesSearch = !filters.search || 
@@ -177,6 +135,18 @@ export const useExpenseTracker = () => {
              matchesMonth && matchesYear && matchesDateFrom && matchesDateTo;
     });
   }, [transactions, filters]);
+
+  // Get unique main categories for filtering (from actual transactions)
+  const uniqueMainCategories = useMemo(() => {
+    const categories = new Set();
+    transactions.forEach(t => {
+      const categoryData = parseCategory(t.category);
+      if (categoryData.main) {
+        categories.add(categoryData.main);
+      }
+    });
+    return Array.from(categories).sort();
+  }, [transactions]);
 
   // Actions
   const clearFilters = () => {
@@ -205,8 +175,23 @@ export const useExpenseTracker = () => {
     setValidationErrors({});
   };
 
-  // 🔥 CRITICAL FIX: Enhanced addTransaction with detailed logging and proper sync
-  const addTransaction = async (sheetsOperations) => {
+  // Validation function
+  const validateForm = (data) => {
+    const errors = {};
+    
+    if (!data.date) errors.date = 'Date is required';
+    if (!data.amount || parseFloat(data.amount) <= 0) errors.amount = 'Valid amount is required';
+    if (!data.category) errors.category = 'Category is required';
+    if (!data.description.trim()) errors.description = 'Description is required';
+    if (!data.account) errors.account = 'Account is required';
+    
+    return {
+      errors,
+      isValid: Object.keys(errors).length === 0
+    };
+  };
+
+  const addTransaction = async (addToSheets) => {
     const { errors, isValid } = validateForm(formData);
     
     if (!isValid) {
@@ -214,76 +199,36 @@ export const useExpenseTracker = () => {
       return false;
     }
 
-    // Determine transaction type from category using Google Sheets logic
-    const transactionType = sheetsOperations?.getTransactionTypeFromCategory 
-      ? sheetsOperations.getTransactionTypeFromCategory(formData.category)
-      : getTransactionTypeFromCategory(formData.category);
-
     const newTransaction = {
       id: editingTransaction ? editingTransaction.id : `local_${Date.now()}_${Math.random()}`,
       date: formData.date,
       amount: parseFloat(formData.amount),
-      category: formData.category,
+      category: formData.category, // This will be the combined format from dropdown
       description: formData.description.trim(),
       account: formData.account,
       tag: formData.tag.trim(),
-      type: transactionType,
+      type: getTransactionType(formData.category),
       synced: false,
       source: 'local',
-      sheetRow: editingTransaction?.sheetRow // 🔥 CRITICAL: Preserve sheet row for edits
+      sheetRow: editingTransaction?.sheetRow
     };
 
-    console.log('📝 🔥 TRANSACTION PROCESSING:', {
-      isEdit: !!editingTransaction,
-      originalTransaction: editingTransaction,
-      newTransaction: newTransaction,
-      hasSheetRow: !!newTransaction.sheetRow,
-      sheetsConnected: sheetsOperations ? 'YES' : 'NO'
-    });
-
-    // Handle Google Sheets operations
-    if (sheetsOperations) {
-      let syncSuccess = false;
-      
-      if (editingTransaction && editingTransaction.sheetRow) {
-        // 🔥 EDIT: Update existing transaction in sheets
-        console.log('📝 🔥 EDITING transaction - calling updateTransactionInSheets');
-        console.log('📝 🔥 Edit data:', {
-          sheetRow: newTransaction.sheetRow,
-          category: newTransaction.category,
-          amount: newTransaction.amount,
-          description: newTransaction.description
-        });
-        
-        syncSuccess = await sheetsOperations.updateTransactionInSheets(newTransaction);
-        console.log('📝 🔥 Edit sync result:', syncSuccess);
-      } else {
-        // 🔥 ADD: Add new transaction to sheets
-        console.log('📝 🔥 ADDING new transaction - calling addTransactionToSheets');
-        syncSuccess = await sheetsOperations.addTransactionToSheets(newTransaction);
-        console.log('📝 🔥 Add sync result:', syncSuccess);
-      }
-      
+    // Try to sync to Google Sheets if function provided
+    if (addToSheets) {
+      const syncSuccess = await addToSheets(newTransaction);
       if (syncSuccess) {
         newTransaction.synced = true;
         newTransaction.source = 'sheets';
-        console.log('✅ 🔥 Transaction synced to sheets successfully');
-      } else {
-        console.log('⚠️ 🔥 Failed to sync to sheets, keeping local copy');
       }
     }
 
     // Update local state
     if (editingTransaction) {
-      // 🔥 EDIT: Update existing transaction
       setTransactions(prev => prev.map(t => 
         t.id === editingTransaction.id ? newTransaction : t
       ));
-      console.log('✅ 🔥 Transaction updated locally');
     } else {
-      // 🔥 ADD: Add new transaction
       setTransactions(prev => [...prev, newTransaction]);
-      console.log('✅ 🔥 Transaction added locally');
     }
 
     resetForm();
@@ -291,53 +236,29 @@ export const useExpenseTracker = () => {
   };
 
   const editTransaction = (transaction) => {
-    console.log('📝 🔥 SETTING UP EDIT for transaction:', transaction);
-    console.log('📝 🔥 Sheet row:', transaction.sheetRow);
-    console.log('📝 🔥 Transaction source:', transaction.source);
-    
     setEditingTransaction(transaction);
     setFormData({
       date: transaction.date,
       amount: transaction.amount.toString(),
-      category: transaction.category,
+      category: transaction.category, // This should be the combined format
       description: transaction.description,
       account: transaction.account,
       tag: transaction.tag || ''
     });
   };
 
-  // Enhanced deleteTransaction with sheets sync
-  const deleteTransaction = async (transactionId, sheetsOperations) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) {
-      return false;
-    }
-
-    // Find the transaction to delete
-    const transactionToDelete = transactions.find(t => t.id === transactionId);
-    if (!transactionToDelete) {
-      console.error('❌ Transaction not found for deletion:', transactionId);
-      return false;
-    }
-
-    console.log('🗑️ Deleting transaction:', transactionToDelete);
-
-    // Handle Google Sheets deletion
-    if (sheetsOperations && transactionToDelete.source === 'sheets') {
-      console.log('📝 Deleting from Google Sheets...');
-      const deleteSuccess = await sheetsOperations.deleteTransactionFromSheets(transactionToDelete);
-      
-      if (deleteSuccess) {
-        console.log('✅ Transaction deleted from sheets successfully');
-      } else {
-        console.log('⚠️ Failed to delete from sheets, but removing locally');
-      }
-    }
-
-    // Remove from local state
+  const deleteTransaction = (transactionId) => {
+    if (!window.confirm('Are you sure you want to delete this transaction?')) return false;
     setTransactions(prev => prev.filter(t => t.id !== transactionId));
-    console.log('✅ Transaction deleted locally');
-    
     return true;
+  };
+
+  // Update master data with categories from Google Sheets
+  const updateMasterData = (newData) => {
+    setMasterData(prev => ({
+      ...prev,
+      ...newData
+    }));
   };
 
   return {
@@ -348,6 +269,7 @@ export const useExpenseTracker = () => {
     setBalances,
     masterData,
     setMasterData,
+    updateMasterData, // New function to update master data
     formData,
     setFormData,
     editingTransaction,
@@ -369,14 +291,14 @@ export const useExpenseTracker = () => {
     topCategories,
     pieChartData,
     filteredTransactions,
-    currentMonthTransactions,
+    uniqueMainCategories, // For filter dropdown
+    getCategoryColor, // Helper for consistent colors
     
     // Actions
     clearFilters,
     resetForm,
     addTransaction,
     editTransaction,
-    deleteTransaction,
-    getTransactionTypeFromCategory
+    deleteTransaction
   };
 };
