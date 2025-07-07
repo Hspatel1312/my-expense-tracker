@@ -249,21 +249,8 @@ export const useExpenseTracker = () => {
     });
   };
 
-  const deleteTransaction = async (transactionId, deleteFromSheets) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) return false;
-    
-    // Find the transaction to get sheet info
-    const transaction = transactions.find(t => t.id === transactionId);
-    
-    // Try to delete from sheets if function provided
-    if (deleteFromSheets && transaction) {
-      const sheetsDeleted = await deleteFromSheets(transaction);
-      if (!sheetsDeleted) {
-        console.warn('⚠️ Failed to delete from sheets, but continuing with local deletion');
-      }
-    }
-    
-    // Remove from local state
+  const deleteTransaction = (transactionId) => {
+    console.log('🗑️ Deleting transaction from local state:', transactionId);
     setTransactions(prev => prev.filter(t => t.id !== transactionId));
     return true;
   };
