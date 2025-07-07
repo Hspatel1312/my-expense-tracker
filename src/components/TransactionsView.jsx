@@ -3,7 +3,7 @@ import { Search, Filter, Edit, Trash2, Calendar, DollarSign, Tag, CreditCard, X,
 import { categoryColors } from '../constants/categories';
 import { parseCategory, months, getYears } from '../utils/helpers';
 
-const TransactionsView = ({ expenseTracker, onEditTransaction }) => {
+const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransaction }) => {
   const {
     filteredTransactions,
     filters,
@@ -11,12 +11,21 @@ const TransactionsView = ({ expenseTracker, onEditTransaction }) => {
     showFilters,
     setShowFilters,
     clearFilters,
-    deleteTransaction,
     masterData
   } = expenseTracker;
 
   const uniqueCategories = [...new Set(filteredTransactions.map(t => parseCategory(t.category).main))];
   const uniqueAccounts = [...new Set(filteredTransactions.map(t => t.account))];
+
+  // 🔥 FIXED: Use the passed delete handler
+  const handleDeleteClick = (transactionId) => {
+    console.log('🗑️ TransactionsView: Delete clicked for:', transactionId);
+    if (onDeleteTransaction) {
+      onDeleteTransaction(transactionId);
+    } else {
+      console.error('❌ No delete handler provided');
+    }
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -193,7 +202,7 @@ const TransactionsView = ({ expenseTracker, onEditTransaction }) => {
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => deleteTransaction(transaction.id)}
+                        onClick={() => handleDeleteClick(transaction.id)}
                         className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -254,7 +263,7 @@ const TransactionsView = ({ expenseTracker, onEditTransaction }) => {
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => deleteTransaction(transaction.id)}
+                          onClick={() => handleDeleteClick(transaction.id)}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                         >
                           <Trash2 className="w-4 h-4" />
