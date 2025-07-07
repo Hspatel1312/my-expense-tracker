@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { masterCategories, categoryColors } from '../constants/categories';
-import { getTransactionType, parseCategory, validateForm } from '../utils/helpers';
+import { categoryColors } from '../constants/categories';
+import { getTransactionType, parseCategory } from '../utils/helpers';
 
 export const useExpenseTracker = () => {
   const [transactions, setTransactions] = useState([]);
@@ -9,7 +9,7 @@ export const useExpenseTracker = () => {
   const [editingTransaction, setEditingTransaction] = useState(null);
 
   const [masterData, setMasterData] = useState({
-    categories: masterCategories,
+    categories: [], // Will be loaded dynamically from Google Sheets
     accounts: []
   });
 
@@ -35,6 +35,24 @@ export const useExpenseTracker = () => {
 
   const [showFilters, setShowFilters] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
+
+  // Helper function to generate category colors dynamically
+  const getCategoryColor = (mainCategory) => {
+    // Use predefined colors if available, otherwise generate a consistent color
+    if (categoryColors[mainCategory]) {
+      return categoryColors[mainCategory];
+    }
+    
+    // Generate a consistent color based on category name
+    let hash = 0;
+    for (let i = 0; i < mainCategory.length; i++) {
+      hash = mainCategory.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    // Convert hash to HSL color (good saturation and lightness)
+    const hue = Math.abs(hash) % 360;
+    return `hsl(${hue}, 65%, 55%)`;
+  };
 
   // Computed values
   const totalBalance = useMemo(() => {
@@ -68,6 +86,7 @@ export const useExpenseTracker = () => {
     return ((currentMonthIncome - currentMonthExpenses) / currentMonthIncome) * 100;
   }, [currentMonthIncome, currentMonthExpenses]);
 
+  // Top categories using main category for grouping
   const topCategories = useMemo(() => {
     const categoryTotals = {};
     currentMonthTransactions
@@ -83,14 +102,16 @@ export const useExpenseTracker = () => {
       .slice(0, 5);
   }, [currentMonthTransactions]);
 
+  // Pie chart data with dynamic colors
   const pieChartData = useMemo(() => {
     return topCategories.map(([category, amount]) => ({
       name: category,
       value: amount,
-      color: categoryColors[category] || '#9CA3AF'
+      color: getCategoryColor(category)
     }));
   }, [topCategories]);
 
+  // Filtered transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter(transaction => {
       const matchesSearch = !filters.search || 
@@ -114,6 +135,18 @@ export const useExpenseTracker = () => {
              matchesMonth && matchesYear && matchesDateFrom && matchesDateTo;
     });
   }, [transactions, filters]);
+
+  // Get unique main categories for filtering (from actual transactions)
+  const uniqueMainCategories = useMemo(() => {
+    const categories = new Set();
+    transactions.forEach(t => {
+      const categoryData = parseCategory(t.category);
+      if (categoryData.main) {
+        categories.add(categoryData.main);
+      }
+    });
+    return Array.from(categories).sort();
+  }, [transactions]);
 
   // Actions
   const clearFilters = () => {
@@ -142,6 +175,22 @@ export const useExpenseTracker = () => {
     setValidationErrors({});
   };
 
+  // Validation function
+  const validateForm = (data) => {
+    const errors = {};
+    
+    if (!data.date) errors.date = 'Date is required';
+    if (!data.amount || parseFloat(data.amount) <= 0) errors.amount = 'Valid amount is required';
+    if (!data.category) errors.category = 'Category is required';
+    if (!data.description.trim()) errors.description = 'Description is required';
+    if (!data.account) errors.account = 'Account is required';
+    
+    return {
+      errors,
+      isValid: Object.keys(errors).length === 0
+    };
+  };
+
   const addTransaction = async (addToSheets) => {
     const { errors, isValid } = validateForm(formData);
     
@@ -154,14 +203,14 @@ export const useExpenseTracker = () => {
       id: editingTransaction ? editingTransaction.id : `local_${Date.now()}_${Math.random()}`,
       date: formData.date,
       amount: parseFloat(formData.amount),
-      category: formData.category,
+      category: formData.category, // This will be the combined format from dropdown
       description: formData.description.trim(),
       account: formData.account,
       tag: formData.tag.trim(),
       type: getTransactionType(formData.category),
       synced: false,
       source: 'local',
-      sheetRow: editingTransaction?.sheetRow
+      sheetRow: editingTransaction?.sheetRow // Preserve the sheet row for edits
     };
 
     // Try to sync to Google Sheets if function provided
@@ -175,6 +224,7 @@ export const useExpenseTracker = () => {
 
     // Update local state
     if (editingTransaction) {
+      console.log('📝 Updating local transaction:', editingTransaction.id, 'with sheetRow:', editingTransaction.sheetRow);
       setTransactions(prev => prev.map(t => 
         t.id === editingTransaction.id ? newTransaction : t
       ));
@@ -187,11 +237,12 @@ export const useExpenseTracker = () => {
   };
 
   const editTransaction = (transaction) => {
+    console.log('✏️ Editing transaction:', transaction.id, 'sheetRow:', transaction.sheetRow);
     setEditingTransaction(transaction);
     setFormData({
       date: transaction.date,
       amount: transaction.amount.toString(),
-      category: transaction.category,
+      category: transaction.category, // This should be the combined format
       description: transaction.description,
       account: transaction.account,
       tag: transaction.tag || ''
@@ -199,9 +250,35 @@ export const useExpenseTracker = () => {
   };
 
   const deleteTransaction = (transactionId) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) return false;
-    setTransactions(prev => prev.filter(t => t.id !== transactionId));
+    console.log('🏠 ExpenseTracker: deleteTransaction called with ID:', transactionId);
+    console.log('🏠 ExpenseTracker: Current transactions count:', transactions.length);
+    
+    const transactionToDelete = transactions.find(t => t.id === transactionId);
+    console.log('🏠 ExpenseTracker: Transaction to delete:', transactionToDelete);
+    
+    if (!transactionToDelete) {
+      console.error('❌ ExpenseTracker: Transaction not found for deletion:', transactionId);
+      return false;
+    }
+    
+    const updatedTransactions = transactions.filter(t => t.id !== transactionId);
+    console.log('🏠 ExpenseTracker: Transactions after deletion:', {
+      before: transactions.length,
+      after: updatedTransactions.length,
+      removed: transactions.length - updatedTransactions.length
+    });
+    
+    setTransactions(updatedTransactions);
+    console.log('✅ ExpenseTracker: Transaction deleted from local state');
     return true;
+  };
+
+  // Update master data with categories from Google Sheets
+  const updateMasterData = (newData) => {
+    setMasterData(prev => ({
+      ...prev,
+      ...newData
+    }));
   };
 
   return {
@@ -212,6 +289,7 @@ export const useExpenseTracker = () => {
     setBalances,
     masterData,
     setMasterData,
+    updateMasterData, // New function to update master data
     formData,
     setFormData,
     editingTransaction,
@@ -233,6 +311,8 @@ export const useExpenseTracker = () => {
     topCategories,
     pieChartData,
     filteredTransactions,
+    uniqueMainCategories, // For filter dropdown
+    getCategoryColor, // Helper for consistent colors
     
     // Actions
     clearFilters,
