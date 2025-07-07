@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { masterCategories, categoryColors } from '../constants/categories';
-import { getTransactionType, parseCategory, validateForm } from '../utils/helpers';
+import { parseCategory, validateForm } from '../utils/helpers';
 
 export const useExpenseTracker = () => {
   const [transactions, setTransactions] = useState([]);
@@ -9,7 +9,7 @@ export const useExpenseTracker = () => {
   const [editingTransaction, setEditingTransaction] = useState(null);
 
   const [masterData, setMasterData] = useState({
-    categories: masterCategories,
+    categories: masterCategories, // Will be updated from Google Sheets
     accounts: []
   });
 
@@ -35,6 +35,41 @@ export const useExpenseTracker = () => {
 
   const [showFilters, setShowFilters] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
+
+  // 🔥 ENHANCED: Dynamic transaction type detection based on categories
+  const getTransactionTypeFromCategory = (category, categoriesList = masterData.categories) => {
+    if (!category) return 'Expense';
+    
+    const categoryLower = category.toLowerCase();
+    
+    // Check if this category exists in our categories list and contains income-related terms
+    const categoryInfo = categoriesList.find(cat => 
+      cat.combined.toLowerCase() === categoryLower ||
+      cat.main.toLowerCase() === categoryLower ||
+      cat.sub.toLowerCase() === categoryLower
+    );
+    
+    // Check for income keywords in the category
+    if (categoryLower.includes('income') || 
+        categoryLower.includes('salary') || 
+        categoryLower.includes('reload') ||
+        categoryLower.includes('refund') ||
+        categoryLower.includes('bonus') ||
+        categoryLower.includes('dividend') ||
+        (categoryLower.includes('others') && categoryLower.includes('income'))) {
+      return 'Income';
+    }
+    
+    // Check for transfer keywords
+    if (categoryLower.includes('transfer') || 
+        categoryLower.includes('withdrawal') ||
+        categoryLower.includes('deposit')) {
+      return 'Transfer';
+    }
+    
+    // Default to Expense for all other categories
+    return 'Expense';
+  };
 
   // Computed values
   const totalBalance = useMemo(() => {
@@ -169,7 +204,7 @@ export const useExpenseTracker = () => {
     setValidationErrors({});
   };
 
-  // 🔥 FIXED: Enhanced addTransaction with proper edit/add handling
+  // 🔥 FIXED: Enhanced addTransaction with proper edit/add handling and type detection
   const addTransaction = async (sheetsOperations) => {
     const { errors, isValid } = validateForm(formData);
     
@@ -177,6 +212,11 @@ export const useExpenseTracker = () => {
       setValidationErrors(errors);
       return false;
     }
+
+    // 🔥 IMPORTANT: Determine transaction type from category using Google Sheets logic
+    const transactionType = sheetsOperations?.getTransactionTypeFromCategory 
+      ? sheetsOperations.getTransactionTypeFromCategory(formData.category)
+      : getTransactionTypeFromCategory(formData.category);
 
     const newTransaction = {
       id: editingTransaction ? editingTransaction.id : `local_${Date.now()}_${Math.random()}`,
@@ -186,11 +226,18 @@ export const useExpenseTracker = () => {
       description: formData.description.trim(),
       account: formData.account,
       tag: formData.tag.trim(),
-      type: getTransactionType(formData.category),
+      type: transactionType, // 🔥 Use dynamic type detection
       synced: false,
       source: 'local',
       sheetRow: editingTransaction?.sheetRow // Preserve sheet row for edits
     };
+
+    console.log('📝 Transaction being processed:', {
+      isEdit: !!editingTransaction,
+      category: formData.category,
+      detectedType: transactionType,
+      sheetRow: newTransaction.sheetRow
+    });
 
     // Handle Google Sheets operations
     if (sheetsOperations) {
@@ -199,6 +246,7 @@ export const useExpenseTracker = () => {
       if (editingTransaction) {
         // 🔥 EDIT: Update existing transaction in sheets
         console.log('📝 Editing transaction, calling updateTransactionInSheets');
+        console.log('📝 Transaction data for update:', newTransaction);
         syncSuccess = await sheetsOperations.updateTransactionInSheets(newTransaction);
       } else {
         // 🔥 ADD: Add new transaction to sheets
@@ -245,7 +293,7 @@ export const useExpenseTracker = () => {
     });
   };
 
-  // 🔥 FIXED: Enhanced deleteTransaction with sheets sync
+  // Enhanced deleteTransaction with sheets sync
   const deleteTransaction = async (transactionId, sheetsOperations) => {
     if (!window.confirm('Are you sure you want to delete this transaction?')) {
       return false;
@@ -315,6 +363,7 @@ export const useExpenseTracker = () => {
     resetForm,
     addTransaction,
     editTransaction,
-    deleteTransaction
+    deleteTransaction,
+    getTransactionTypeFromCategory // 🔥 Expose type detection function
   };
 };
