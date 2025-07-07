@@ -284,7 +284,10 @@ const App = () => {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setCurrentView(item.id)}
+                  onClick={() => {
+                    console.log('🔄 Navigation: Switching from', currentView, 'to', item.id);
+                    setCurrentView(item.id);
+                  }}
                   className={`py-3 sm:py-4 px-4 sm:px-1 border-b-2 font-semibold text-xs sm:text-sm transition-all duration-300 whitespace-nowrap flex-shrink-0 min-w-0 ${
                     currentView === item.id
                       ? 'border-blue-500 text-blue-600 bg-blue-50/80'
@@ -362,18 +365,29 @@ const App = () => {
         {/* Main Content */}
         <div className="relative">
           {currentView === 'dashboard' && (
-            <DashboardView expenseTracker={expenseTracker} googleSheets={googleSheets} />
+            <div key="dashboard-view">
+              <DashboardView expenseTracker={expenseTracker} googleSheets={googleSheets} />
+            </div>
           )}
           {currentView === 'analytics' && (
-            <AnalyticsView expenseTracker={expenseTracker} />
+            <div key="analytics-view">
+              <AnalyticsView expenseTracker={expenseTracker} />
+            </div>
           )}
           {currentView === 'transactions' && (
-            <TransactionsView 
-              expenseTracker={expenseTracker} 
-              onEditTransaction={handleEditTransaction}
-              onDeleteTransaction={handleDeleteTransaction}
-            />
+            <div key="transactions-view">
+              <TransactionsView 
+                expenseTracker={expenseTracker} 
+                onEditTransaction={handleEditTransaction}
+                onDeleteTransaction={handleDeleteTransaction}
+              />
+            </div>
           )}
+          
+          {/* Debug info */}
+          <div className="fixed bottom-4 left-4 bg-black text-white px-2 py-1 rounded text-xs opacity-50">
+            Current View: {currentView}
+          </div>
         </div>
       </div>
 
