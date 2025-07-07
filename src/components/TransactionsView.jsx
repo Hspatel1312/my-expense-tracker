@@ -2,7 +2,7 @@ import React from 'react';
 import { Search, Filter, Edit, Trash2, Calendar, DollarSign, Tag, CreditCard, X, ChevronDown } from 'lucide-react';
 import { parseCategory, months, getYears } from '../utils/helpers';
 
-const TransactionsView = ({ expenseTracker, onEditTransaction, deleteTransactionFromSheets }) => {
+const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransaction }) => {
   const {
     filteredTransactions,
     filters,
@@ -10,79 +10,12 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, deleteTransaction
     showFilters,
     setShowFilters,
     clearFilters,
-    deleteTransaction,
     masterData,
     uniqueMainCategories,
     getCategoryColor
   } = expenseTracker;
 
   const uniqueAccounts = [...new Set(filteredTransactions.map(t => t.account))];
-
-  // Handle delete with both local and sheets deletion
-  const handleDeleteTransaction = async (transactionId) => {
-    const transaction = filteredTransactions.find(t => t.id === transactionId);
-    
-    if (!window.confirm('Are you sure you want to delete this transaction?')) {
-      return;
-    }
-    
-    console.log('🗑️ Starting deletion process for transaction:', {
-      id: transactionId,
-      description: transaction?.description,
-      sheetRow: transaction?.sheetRow,
-      source: transaction?.source,
-      synced: transaction?.synced,
-      fullTransaction: transaction // Log the entire transaction object
-    });
-    
-    // Check all conditions for sheets deletion
-    const hasDeleteFunction = !!deleteTransactionFromSheets;
-    const hasSheetRow = !!(transaction?.sheetRow && transaction.sheetRow > 1);
-    const isSynced = !!transaction?.synced;
-    const fromSheets = transaction?.source === 'sheets';
-    
-    console.log('🔍 Deletion conditions check:', {
-      hasDeleteFunction,
-      hasSheetRow,
-      isSynced,
-      fromSheets,
-      shouldDeleteFromSheets: hasDeleteFunction && hasSheetRow && (isSynced || fromSheets)
-    });
-    
-    // Try to delete from sheets if it's a synced transaction with a sheet row
-    if (hasDeleteFunction && hasSheetRow && (isSynced || fromSheets)) {
-      console.log('🔗 Attempting to delete from Google Sheets...');
-      try {
-        const sheetsDeleteResult = await deleteTransactionFromSheets(transaction);
-        console.log('📊 Sheets deletion result:', sheetsDeleteResult);
-        
-        if (sheetsDeleteResult) {
-          console.log('✅ Successfully deleted from Google Sheets');
-        } else {
-          console.log('⚠️ Failed to delete from Google Sheets, but continuing with local deletion');
-        }
-      } catch (error) {
-        console.error('❌ Error during sheets deletion:', error);
-        // Continue with local deletion even if sheets deletion fails
-      }
-    } else {
-      console.log('ℹ️ Skipping sheets deletion because:', {
-        hasDeleteFunction,
-        hasSheetRow,
-        isSynced,
-        fromSheets,
-        reason: !hasDeleteFunction ? 'No delete function' :
-                !hasSheetRow ? 'No valid sheet row' :
-                (!isSynced && !fromSheets) ? 'Transaction not from sheets' :
-                'Unknown reason'
-      });
-    }
-    
-    // Delete from local state
-    console.log('🏠 Deleting from local state...');
-    deleteTransaction(transactionId);
-    console.log('✅ Deletion process completed');
-  };
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -261,7 +194,7 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, deleteTransaction
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDeleteTransaction(transaction.id)}
+                        onClick={() => onDeleteTransaction(transaction.id)}
                         className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                       >
                         <Trash2 className="w-4 h-4" />
