@@ -17,11 +17,14 @@ export const categoryColors = {
   'Income': '#66BB6A'
 };
 
+// Fallback categories
 export const masterCategories = [
   { main: 'Food', sub: 'Food', combined: 'Food > Food' },
+  { main: 'Social Life', sub: 'Social Life', combined: 'Social Life > Social Life' },
+  { main: 'Entertainment', sub: 'Entertainment', combined: 'Entertainment > Entertainment' },
+  { main: 'Fuel', sub: 'Eon', combined: 'Fuel > Eon' },
   { main: 'Fuel', sub: 'Honda City', combined: 'Fuel > Honda City' },
   { main: 'Fuel', sub: 'Aviator', combined: 'Fuel > Aviator' },
-  { main: 'Fuel', sub: 'Eon', combined: 'Fuel > Eon' },
   { main: 'Culture', sub: 'Culture', combined: 'Culture > Culture' },
   { main: 'Household', sub: 'Grocery', combined: 'Household > Grocery' },
   { main: 'Household', sub: 'Laundry', combined: 'Household > Laundry' },
@@ -42,7 +45,62 @@ export const masterCategories = [
   { main: 'Misc', sub: 'Misc', combined: 'Misc > Misc' },
   { main: 'Income', sub: 'Income', combined: 'Income > Income' },
   { main: 'Income', sub: 'Reload', combined: 'Income > Reload' },
-  { main: 'Income', sub: 'Others', combined: 'Income > Others' },
-  { main: 'Social Life', sub: 'Social Life', combined: 'Social Life > Social Life' },
-  { main: 'Entertainment', sub: 'Entertainment', combined: 'Entertainment > Entertainment' }
+  { main: 'Income', sub: 'Others', combined: 'Income > Others' }
 ];
+
+// 🔥 ENHANCED: Function to process categories from Google Sheets with detailed debugging
+export const processCategoriesFromSheets = (sheetsData) => {
+  console.log('📋 🔥 PROCESSING CATEGORIES FROM SHEETS:');
+  console.log('📋 Raw sheets data:', sheetsData);
+  console.log('📋 Data type:', typeof sheetsData);
+  console.log('📋 Is array:', Array.isArray(sheetsData));
+  console.log('📋 Data length:', sheetsData ? sheetsData.length : 'null/undefined');
+
+  if (!sheetsData || !Array.isArray(sheetsData)) {
+    console.log('📋 ❌ No valid sheets data, using fallback categories');
+    return masterCategories;
+  }
+
+  const categories = [];
+  
+  sheetsData.forEach((row, index) => {
+    console.log(`📋 🔍 Processing row ${index + 1}:`, row);
+    
+    if (row && Array.isArray(row)) {
+      const main = row[0] ? row[0].toString().trim() : '';
+      const sub = row[1] ? row[1].toString().trim() : '';
+      const combined = row[2] ? row[2].toString().trim() : '';
+      
+      console.log(`📋 Row ${index + 1} parsed:`, { main, sub, combined });
+      
+      // 🔥 RELAXED: Accept rows that have at least main and combined
+      if (main && combined) {
+        const categoryItem = {
+          main: main,
+          sub: sub || main, // Use main as sub if sub is empty
+          combined: combined
+        };
+        
+        categories.push(categoryItem);
+        console.log(`📋 ✅ Added category ${categories.length}:`, categoryItem);
+      } else {
+        console.log(`📋 ⚠️ Skipping row ${index + 1} - missing main or combined:`, { main, sub, combined });
+      }
+    } else {
+      console.log(`📋 ⚠️ Skipping row ${index + 1} - invalid format:`, row);
+    }
+  });
+  
+  console.log('📋 🔥 FINAL PROCESSING RESULTS:');
+  console.log('📋 Total categories processed:', categories.length);
+  console.log('📋 All processed categories:', categories);
+  
+  // If no categories were processed, return fallback
+  if (categories.length === 0) {
+    console.log('📋 ❌ No categories processed, using fallback');
+    return masterCategories;
+  }
+  
+  console.log('📋 ✅ Returning processed categories:', categories.length);
+  return categories;
+};
