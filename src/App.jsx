@@ -360,7 +360,21 @@ const App = () => {
         )}
 
         {/* Main Content */}
-        {navigationItems.find(item => item.id === currentView)?.component}
+        <div className="relative">
+          {currentView === 'dashboard' && (
+            <DashboardView expenseTracker={expenseTracker} googleSheets={googleSheets} />
+          )}
+          {currentView === 'analytics' && (
+            <AnalyticsView expenseTracker={expenseTracker} />
+          )}
+          {currentView === 'transactions' && (
+            <TransactionsView 
+              expenseTracker={expenseTracker} 
+              onEditTransaction={handleEditTransaction}
+              onDeleteTransaction={handleDeleteTransaction}
+            />
+          )}
+        </div>
       </div>
 
       {/* Quick Add Button - Mobile Optimized */}
