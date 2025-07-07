@@ -798,14 +798,27 @@ export const useGoogleSheets = () => {
 
       console.log('🗑️ Deleting transaction from row:', transaction.sheetRow);
 
+      // First, get the sheet ID for the Transactions sheet
+      const spreadsheetInfo = await window.gapi.client.sheets.spreadsheets.get({
+        spreadsheetId: SHEETS_CONFIG.spreadsheetId
+      });
+      
+      // Find the Transactions sheet ID
+      const transactionsSheet = spreadsheetInfo.result.sheets.find(sheet => 
+        sheet.properties.title === 'Transactions'
+      );
+      
+      const sheetId = transactionsSheet ? transactionsSheet.properties.sheetId : 0;
+      console.log('📋 Using sheet ID:', sheetId, 'for Transactions sheet');
+
       // Delete the row from Google Sheets
-      await window.gapi.client.sheets.spreadsheets.batchUpdate({
+      const deleteResponse = await window.gapi.client.sheets.spreadsheets.batchUpdate({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId,
         resource: {
           requests: [{
             deleteDimension: {
               range: {
-                sheetId: 0, // Assuming transactions are on the first sheet
+                sheetId: sheetId,
                 dimension: 'ROWS',
                 startIndex: transaction.sheetRow - 1, // 0-indexed
                 endIndex: transaction.sheetRow
@@ -815,10 +828,11 @@ export const useGoogleSheets = () => {
         }
       });
 
-      console.log('✅ Transaction deleted from sheets');
+      console.log('✅ Transaction deleted from sheets successfully:', deleteResponse);
       return true;
     } catch (error) {
       console.error('❌ Failed to delete transaction from sheets:', error);
+      console.error('Error details:', error.result || error.message);
       return false;
     }
   }, [sheetsConfig.isConnected]);
