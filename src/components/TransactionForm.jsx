@@ -156,8 +156,8 @@ const TransactionForm = ({
                 
                 {/* Category Dropdown */}
                 {showCategoryDropdown && filteredCategories.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-10">
-                    {filteredCategories.slice(0, 10).map((cat, index) => {
+                  <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto z-10">
+                    {filteredCategories.map((cat, index) => {
                       const categoryData = parseCategory(cat.combined);
                       return (
                         <button
@@ -183,6 +183,13 @@ const TransactionForm = ({
                         </button>
                       );
                     })}
+                    
+                    {/* Show count if there are more categories */}
+                    {filteredCategories.length < masterData.categories.length && (
+                      <div className="px-4 py-2 bg-gray-50 border-t text-xs text-gray-500 text-center">
+                        Showing {filteredCategories.length} of {masterData.categories.length} categories
+                      </div>
+                    )}
                     
                     {/* Show message if no categories loaded */}
                     {masterData.categories.length === 0 && (
