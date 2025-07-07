@@ -26,21 +26,42 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, deleteTransaction
       return;
     }
     
-    console.log('🗑️ Deleting transaction:', transactionId, 'sheetRow:', transaction?.sheetRow);
+    console.log('🗑️ Starting deletion process for transaction:', {
+      id: transactionId,
+      description: transaction?.description,
+      sheetRow: transaction?.sheetRow,
+      source: transaction?.source,
+      synced: transaction?.synced
+    });
     
     // Try to delete from sheets first if connected and has sheet row
-    if (deleteTransactionFromSheets && transaction?.sheetRow) {
+    if (deleteTransactionFromSheets && transaction?.sheetRow && transaction?.synced) {
+      console.log('🔗 Attempting to delete from Google Sheets...');
       try {
-        await deleteTransactionFromSheets(transaction);
-        console.log('✅ Transaction deleted from sheets');
+        const sheetsDeleteResult = await deleteTransactionFromSheets(transaction);
+        console.log('📊 Sheets deletion result:', sheetsDeleteResult);
+        
+        if (sheetsDeleteResult) {
+          console.log('✅ Successfully deleted from Google Sheets');
+        } else {
+          console.log('⚠️ Failed to delete from Google Sheets, but continuing with local deletion');
+        }
       } catch (error) {
-        console.error('❌ Failed to delete from sheets:', error);
+        console.error('❌ Error during sheets deletion:', error);
         // Continue with local deletion even if sheets deletion fails
       }
+    } else {
+      console.log('ℹ️ Skipping sheets deletion because:', {
+        hasDeleteFunction: !!deleteTransactionFromSheets,
+        hasSheetRow: !!transaction?.sheetRow,
+        isSynced: !!transaction?.synced
+      });
     }
     
     // Delete from local state
+    console.log('🏠 Deleting from local state...');
     deleteTransaction(transactionId);
+    console.log('✅ Deletion process completed');
   };
 
   return (
