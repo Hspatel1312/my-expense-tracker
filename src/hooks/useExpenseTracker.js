@@ -44,20 +44,13 @@ export const useExpenseTracker = () => {
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
 
-  // Debug current month calculations
   const currentMonthTransactions = useMemo(() => {
     const filtered = transactions.filter(t => {
       const date = new Date(t.date);
       const isCurrentMonth = date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-      
-      if (isCurrentMonth) {
-        console.log(`🔍 HOOK - Current month transaction: ${t.description} (${t.type}) - ₹${t.amount}`);
-      }
-      
       return isCurrentMonth;
     });
     
-    console.log(`🔍 HOOK - Current month transactions (${currentMonth + 1}/${currentYear}):`, filtered.length);
     return filtered;
   }, [transactions, currentMonth, currentYear]);
 
@@ -66,7 +59,6 @@ export const useExpenseTracker = () => {
       .filter(t => t.type === 'Income')
       .reduce((sum, t) => sum + t.amount, 0);
     
-    console.log('🔍 HOOK - Current month income:', income);
     return income;
   }, [currentMonthTransactions]);
 
@@ -75,31 +67,24 @@ export const useExpenseTracker = () => {
       .filter(t => t.type === 'Expense')
       .reduce((sum, t) => sum + t.amount, 0);
     
-    console.log('🔍 HOOK - Current month expenses:', expenses);
     return expenses;
   }, [currentMonthTransactions]);
 
   const savingsRate = useMemo(() => {
     if (currentMonthIncome === 0) return 0;
     const rate = ((currentMonthIncome - currentMonthExpenses) / currentMonthIncome) * 100;
-    console.log('🔍 HOOK - Savings rate:', rate);
     return rate;
   }, [currentMonthIncome, currentMonthExpenses]);
 
-  // Fixed topCategories calculation with better debugging
+  // Fixed topCategories calculation
   const topCategories = useMemo(() => {
-    console.log('🔍 HOOK - Calculating top categories...');
-    
     // Get current month expense transactions
     const currentMonthExpenseTransactions = currentMonthTransactions.filter(t => t.type === 'Expense');
-    
-    console.log('🔍 HOOK - Current month expense transactions:', currentMonthExpenseTransactions.length);
     
     // Use current month expenses, or fall back to recent if none
     let transactionsToUse = currentMonthExpenseTransactions;
     
     if (transactionsToUse.length === 0) {
-      console.log('🔍 HOOK - No current month expenses, using recent...');
       // Get expenses from last 30 days
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -108,8 +93,6 @@ export const useExpenseTracker = () => {
         const date = new Date(t.date);
         return t.type === 'Expense' && date >= thirtyDaysAgo;
       });
-      
-      console.log('🔍 HOOK - Recent expenses (30 days):', transactionsToUse.length);
     }
     
     const categoryTotals = {};
@@ -118,15 +101,12 @@ export const useExpenseTracker = () => {
       const categoryData = parseCategory(t.category);
       const main = categoryData.main || 'Unknown';
       categoryTotals[main] = (categoryTotals[main] || 0) + t.amount;
-      
-      console.log(`🔍 HOOK - Adding ₹${t.amount} to "${main}" category (now: ₹${categoryTotals[main]})`);
     });
     
     const result = Object.entries(categoryTotals)
       .sort(([,a], [,b]) => b - a)
       .slice(0, 5);
     
-    console.log('🔍 HOOK - Final top categories:', result);
     return result;
   }, [currentMonthTransactions, transactions]);
 
@@ -189,7 +169,8 @@ export const useExpenseTracker = () => {
     setValidationErrors({});
   };
 
-  const addTransaction = async (addToSheets) => {
+  // 🔥 FIXED: Enhanced addTransaction with proper edit/add handling
+  const addTransaction = async (sheetsOperations) => {
     const { errors, isValid } = validateForm(formData);
     
     if (!isValid) {
@@ -208,25 +189,43 @@ export const useExpenseTracker = () => {
       type: getTransactionType(formData.category),
       synced: false,
       source: 'local',
-      sheetRow: editingTransaction?.sheetRow
+      sheetRow: editingTransaction?.sheetRow // Preserve sheet row for edits
     };
 
-    // Try to sync to Google Sheets if function provided
-    if (addToSheets) {
-      const syncSuccess = await addToSheets(newTransaction);
+    // Handle Google Sheets operations
+    if (sheetsOperations) {
+      let syncSuccess = false;
+      
+      if (editingTransaction) {
+        // 🔥 EDIT: Update existing transaction in sheets
+        console.log('📝 Editing transaction, calling updateTransactionInSheets');
+        syncSuccess = await sheetsOperations.updateTransactionInSheets(newTransaction);
+      } else {
+        // 🔥 ADD: Add new transaction to sheets
+        console.log('📝 Adding new transaction, calling addTransactionToSheets');
+        syncSuccess = await sheetsOperations.addTransactionToSheets(newTransaction);
+      }
+      
       if (syncSuccess) {
         newTransaction.synced = true;
         newTransaction.source = 'sheets';
+        console.log('✅ Transaction synced to sheets successfully');
+      } else {
+        console.log('⚠️ Failed to sync to sheets, keeping local copy');
       }
     }
 
     // Update local state
     if (editingTransaction) {
+      // 🔥 EDIT: Update existing transaction
       setTransactions(prev => prev.map(t => 
         t.id === editingTransaction.id ? newTransaction : t
       ));
+      console.log('✅ Transaction updated locally');
     } else {
+      // 🔥 ADD: Add new transaction
       setTransactions(prev => [...prev, newTransaction]);
+      console.log('✅ Transaction added locally');
     }
 
     resetForm();
@@ -234,6 +233,7 @@ export const useExpenseTracker = () => {
   };
 
   const editTransaction = (transaction) => {
+    console.log('📝 Setting up edit for transaction:', transaction);
     setEditingTransaction(transaction);
     setFormData({
       date: transaction.date,
@@ -245,9 +245,37 @@ export const useExpenseTracker = () => {
     });
   };
 
-  const deleteTransaction = (transactionId) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) return false;
+  // 🔥 FIXED: Enhanced deleteTransaction with sheets sync
+  const deleteTransaction = async (transactionId, sheetsOperations) => {
+    if (!window.confirm('Are you sure you want to delete this transaction?')) {
+      return false;
+    }
+
+    // Find the transaction to delete
+    const transactionToDelete = transactions.find(t => t.id === transactionId);
+    if (!transactionToDelete) {
+      console.error('❌ Transaction not found for deletion:', transactionId);
+      return false;
+    }
+
+    console.log('🗑️ Deleting transaction:', transactionToDelete);
+
+    // Handle Google Sheets deletion
+    if (sheetsOperations && transactionToDelete.source === 'sheets') {
+      console.log('📝 Deleting from Google Sheets...');
+      const deleteSuccess = await sheetsOperations.deleteTransactionFromSheets(transactionToDelete);
+      
+      if (deleteSuccess) {
+        console.log('✅ Transaction deleted from sheets successfully');
+      } else {
+        console.log('⚠️ Failed to delete from sheets, but removing locally');
+      }
+    }
+
+    // Remove from local state
     setTransactions(prev => prev.filter(t => t.id !== transactionId));
+    console.log('✅ Transaction deleted locally');
+    
     return true;
   };
 
@@ -280,7 +308,7 @@ export const useExpenseTracker = () => {
     topCategories,
     pieChartData,
     filteredTransactions,
-    currentMonthTransactions, // Add this for debugging
+    currentMonthTransactions,
     
     // Actions
     clearFilters,
