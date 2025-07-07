@@ -726,37 +726,49 @@ export const useGoogleSheets = () => {
         await connectToGoogleSheets();
       }
 
+      // Only update columns A-F and I (skip G and H which have formulas)
       const transactionData = [
-        transaction.date,
-        transaction.amount,
-        transaction.category,
-        transaction.description,
-        transaction.tag,
-        transaction.account,
-        '',
-        '',
-        transaction.type
+        transaction.date,        // A
+        transaction.amount,      // B
+        transaction.category,    // C
+        transaction.description, // D
+        transaction.tag,         // E
+        transaction.account,     // F
+        // Skip G and H (formulas)
+        transaction.type         // I
       ];
 
       // Check if this is an edit (has sheetRow) or new transaction
       if (transaction.sheetRow && transaction.sheetRow > 1) {
         console.log('📝 Updating existing transaction at row:', transaction.sheetRow);
         
-        // Update existing row
-        await window.gapi.client.sheets.spreadsheets.values.update({
-          spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-          range: `Transactions!A${transaction.sheetRow}:I${transaction.sheetRow}`,
-          valueInputOption: 'USER_ENTERED',
-          resource: {
-            values: [transactionData]
-          }
-        });
+        // Update existing row - use separate ranges to skip G and H
+        await Promise.all([
+          // Update A-F (columns 1-6)
+          window.gapi.client.sheets.spreadsheets.values.update({
+            spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+            range: `Transactions!A${transaction.sheetRow}:F${transaction.sheetRow}`,
+            valueInputOption: 'USER_ENTERED',
+            resource: {
+              values: [transactionData.slice(0, 6)] // A-F
+            }
+          }),
+          // Update I (column 9)
+          window.gapi.client.sheets.spreadsheets.values.update({
+            spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+            range: `Transactions!I${transaction.sheetRow}`,
+            valueInputOption: 'USER_ENTERED',
+            resource: {
+              values: [[transactionData[6]]] // I (type)
+            }
+          })
+        ]);
         
         console.log('✅ Transaction updated successfully at row:', transaction.sheetRow);
       } else {
         console.log('➕ Adding new transaction to sheets');
         
-        // Add new transaction
+        // Add new transaction - use batchUpdate to write to specific columns
         const readResponse = await window.gapi.client.sheets.spreadsheets.values.get({
           spreadsheetId: SHEETS_CONFIG.spreadsheetId,
           range: SHEETS_CONFIG.TRANSACTIONS_RANGE
@@ -764,16 +776,24 @@ export const useGoogleSheets = () => {
         
         const lastRow = (readResponse.result.values?.length || 1) + 1;
         
-        await window.gapi.client.sheets.spreadsheets.values.append({
+        await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
           spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-          range: `Transactions!A${lastRow}`,
-          valueInputOption: 'USER_ENTERED',
           resource: {
-            values: [transactionData]
+            valueInputOption: 'USER_ENTERED',
+            data: [
+              {
+                range: `Transactions!A${lastRow}:F${lastRow}`,
+                values: [transactionData.slice(0, 6)] // A-F
+              },
+              {
+                range: `Transactions!I${lastRow}`,
+                values: [[transactionData[6]]] // I (type)
+              }
+            ]
           }
         });
         
-        console.log('✅ New transaction added at row:', lastRow);
+        console.log('✅ New transaction added at row:', lastRow, '(skipped G and H columns)');
       }
 
       return true;
