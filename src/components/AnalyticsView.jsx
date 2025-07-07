@@ -157,6 +157,11 @@ const AnalyticsView = ({ expenseTracker }) => {
 
   return (
     <div className="space-y-4 sm:space-y-8">
+      {/* Debug Header */}
+      <div className="bg-blue-100 border border-blue-300 rounded-lg p-3 mb-4">
+        <h2 className="text-blue-800 font-bold">📊 ANALYTICS VIEW - This should show charts and expense analysis</h2>
+      </div>
+
       {/* Current Month Expense Distribution */}
       <div className="bg-white/80 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-8 border border-white/50">
         <div className="flex items-center justify-between mb-4 sm:mb-6">
