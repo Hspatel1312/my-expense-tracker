@@ -89,10 +89,46 @@ const App = () => {
     }
   };
 
-  // Handle edit transaction
-  const handleEditTransaction = (transaction) => {
-    expenseTracker.editTransaction(transaction);
-    setIsFormVisible(true);
+  // Handle delete transaction with sheets integration
+  const handleDeleteTransaction = async (transactionId) => {
+    const transaction = expenseTracker.transactions.find(t => t.id === transactionId);
+    
+    if (!window.confirm('Are you sure you want to delete this transaction?')) {
+      return;
+    }
+    
+    console.log('🗑️ App: Starting deletion process for transaction:', {
+      id: transactionId,
+      description: transaction?.description,
+      sheetRow: transaction?.sheetRow,
+      source: transaction?.source,
+      synced: transaction?.synced
+    });
+    
+    // Try to delete from sheets if it's a synced transaction with a sheet row
+    if (transaction?.sheetRow && (transaction?.synced || transaction?.source === 'sheets')) {
+      console.log('🔗 App: Attempting to delete from Google Sheets...');
+      try {
+        const sheetsDeleteResult = await googleSheets.deleteTransactionFromSheets(transaction);
+        console.log('📊 App: Sheets deletion result:', sheetsDeleteResult);
+        
+        if (sheetsDeleteResult) {
+          console.log('✅ App: Successfully deleted from Google Sheets');
+        } else {
+          console.log('⚠️ App: Failed to delete from Google Sheets, but continuing with local deletion');
+        }
+      } catch (error) {
+        console.error('❌ App: Error during sheets deletion:', error);
+        // Continue with local deletion even if sheets deletion fails
+      }
+    } else {
+      console.log('ℹ️ App: Skipping sheets deletion - not a synced transaction or no sheet row');
+    }
+    
+    // Delete from local state
+    console.log('🏠 App: Deleting from local state...');
+    expenseTracker.deleteTransaction(transactionId);
+    console.log('✅ App: Deletion process completed');
   };
 
   // Handle manual sync
@@ -117,6 +153,12 @@ const App = () => {
       console.error('❌ Connection failed:', error);
       setError('Failed to connect to Google Sheets');
     }
+  };
+
+  // Handle edit transaction
+  const handleEditTransaction = (transaction) => {
+    expenseTracker.editTransaction(transaction);
+    setIsFormVisible(true);
   };
 
   // Navigation items
