@@ -21,7 +21,7 @@ const App = () => {
   const expenseTracker = useExpenseTracker();
   const googleSheets = useGoogleSheets();
 
-  // Function to update app state with data including categories
+  // Function to update app state with data
   const updateAppState = (data) => {
     if (!data) return;
     
@@ -32,19 +32,12 @@ const App = () => {
     }
     
     if (data.accounts) {
-      expenseTracker.setMasterData(prev => ({ 
-        ...prev, 
-        accounts: data.accounts 
-      }));
+      expenseTracker.updateMasterData({ accounts: data.accounts });
     }
     
-    // 🔥 UPDATE: Handle categories from Google Sheets
-    if (data.categories && data.categories.length > 0) {
-      console.log('📋 Updating categories from Google Sheets:', data.categories.length);
-      expenseTracker.setMasterData(prev => ({ 
-        ...prev, 
-        categories: data.categories 
-      }));
+    if (data.categories) {
+      console.log('📂 Setting categories:', data.categories.length, 'categories');
+      expenseTracker.updateMasterData({ categories: data.categories });
     }
     
     if (data.transactions) {
@@ -85,52 +78,21 @@ const App = () => {
     handleConnectionChange();
   }, [googleSheets.sheetsConfig.isConnected, googleSheets.manualSync, dataLoaded]);
 
-  // 🔥 ENHANCED: Handle form submission with all sheets operations
+  // Handle form submission
   const handleAddTransaction = async () => {
-    console.log('📝 Handling transaction submission...');
-    console.log('📝 Editing transaction:', expenseTracker.editingTransaction);
-    
-    // Pass all the sheets operations including type detection
-    const sheetsOperations = {
-      addTransactionToSheets: googleSheets.addTransactionToSheets,
-      updateTransactionInSheets: googleSheets.updateTransactionInSheets,
-      deleteTransactionFromSheets: googleSheets.deleteTransactionFromSheets,
-      getTransactionTypeFromCategory: googleSheets.getTransactionTypeFromCategory // 🔥 NEW
-    };
-    
-    const success = await expenseTracker.addTransaction(sheetsOperations);
+    const success = await expenseTracker.addTransaction(
+      googleSheets.addTransactionToSheets
+    );
     
     if (success) {
       setIsFormVisible(false);
-      console.log('✅ Transaction submission successful');
-    } else {
-      console.log('❌ Transaction submission failed');
     }
   };
 
   // Handle edit transaction
   const handleEditTransaction = (transaction) => {
-    console.log('📝 App: Starting edit for transaction:', transaction);
     expenseTracker.editTransaction(transaction);
     setIsFormVisible(true);
-  };
-
-  // Handle delete transaction with sheets sync
-  const handleDeleteTransaction = async (transactionId) => {
-    console.log('🗑️ App: Handling delete for transaction:', transactionId);
-    
-    // Pass the sheets operations for deletion
-    const sheetsOperations = {
-      deleteTransactionFromSheets: googleSheets.deleteTransactionFromSheets
-    };
-    
-    const success = await expenseTracker.deleteTransaction(transactionId, sheetsOperations);
-    
-    if (success) {
-      console.log('✅ Transaction deletion successful');
-    } else {
-      console.log('❌ Transaction deletion cancelled or failed');
-    }
   };
 
   // Handle manual sync
@@ -142,6 +104,18 @@ const App = () => {
     } catch (error) {
       console.error('❌ Manual sync failed:', error);
       setError('Failed to sync with Google Sheets');
+    }
+  };
+
+  // Handle connection with data loading
+  const handleConnect = async () => {
+    try {
+      console.log('🔄 Connecting to Google Sheets...');
+      const data = await googleSheets.connectToGoogleSheets();
+      updateAppState(data);
+    } catch (error) {
+      console.error('❌ Connection failed:', error);
+      setError('Failed to connect to Google Sheets');
     }
   };
 
@@ -164,19 +138,13 @@ const App = () => {
       label: 'Transactions',
       icon: CreditCard,
       count: expenseTracker.filteredTransactions.length,
-      component: (
-        <TransactionsView 
-          expenseTracker={expenseTracker} 
-          onEditTransaction={handleEditTransaction}
-          onDeleteTransaction={handleDeleteTransaction}
-        />
-      )
+      component: <TransactionsView expenseTracker={expenseTracker} onEditTransaction={handleEditTransaction} />
     }
   ];
 
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
-      {/* Enhanced mobile-specific styles */}
+      {/* Add mobile-specific styles */}
       <style jsx global>{`
         .scrollbar-hide {
           -ms-overflow-style: none;
@@ -191,56 +159,6 @@ const App = () => {
           body {
             overflow-x: hidden;
           }
-        }
-
-        /* Enhanced navigation backdrop */
-        .nav-backdrop {
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          background: rgba(255, 255, 255, 0.95);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
-        }
-
-        /* Dark mode navigation support */
-        @media (prefers-color-scheme: dark) {
-          .nav-backdrop {
-            background: rgba(31, 41, 55, 0.95);
-            border-bottom: 1px solid rgba(75, 85, 99, 0.3);
-          }
-        }
-
-        /* Navigation button enhancements */
-        .nav-button {
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          position: relative;
-          overflow: hidden;
-        }
-
-        .nav-button::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(147, 51, 234, 0.1));
-          opacity: 0;
-          transition: opacity 0.3s ease;
-          border-radius: inherit;
-        }
-
-        .nav-button.active::before {
-          opacity: 1;
-        }
-
-        .nav-button:hover::before {
-          opacity: 0.5;
-        }
-
-        /* Enhanced scrolling behavior */
-        html {
-          scroll-behavior: smooth;
         }
       `}</style>
 
@@ -275,6 +193,18 @@ const App = () => {
         </div>
       )}
 
+      {/* Category Loading Status */}
+      {dataLoaded && expenseTracker.masterData.categories.length === 0 && googleSheets.sheetsConfig.isConnected && (
+        <div className="fixed top-20 left-4 right-4 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 z-40 max-w-md sm:w-full">
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl shadow-lg">
+            <div className="flex items-center space-x-3">
+              <RefreshCw className="w-4 h-4 animate-spin flex-shrink-0" />
+              <span className="font-medium text-sm">Loading categories from Google Sheets...</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <Header 
         transactions={expenseTracker.transactions}
@@ -286,34 +216,29 @@ const App = () => {
         setShowSyncModal={setShowSyncModal}
       />
 
-      {/* Enhanced Navigation - Fixed Sticky Navigation */}
-      <div className="sticky top-0 z-50 nav-backdrop">
+      {/* Navigation - Fixed Sticky Navigation */}
+      <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-xl border-b border-gray-200/60 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Mobile Navigation - Enhanced Horizontal Scroll */}
+          {/* Mobile Navigation - Horizontal Scroll */}
           <nav className="flex space-x-1 sm:space-x-8 overflow-x-auto scrollbar-hide py-2 sm:py-0">
             {navigationItems.map((item) => {
               const IconComponent = item.icon;
-              const isActive = currentView === item.id;
               return (
                 <button
                   key={item.id}
                   onClick={() => setCurrentView(item.id)}
-                  className={`nav-button py-3 sm:py-4 px-4 sm:px-1 border-b-2 font-semibold text-xs sm:text-sm transition-all duration-300 whitespace-nowrap flex-shrink-0 min-w-0 rounded-t-lg ${
-                    isActive
-                      ? 'border-blue-500 text-blue-600 bg-blue-50/80 active'
+                  className={`py-3 sm:py-4 px-4 sm:px-1 border-b-2 font-semibold text-xs sm:text-sm transition-all duration-300 whitespace-nowrap flex-shrink-0 min-w-0 ${
+                    currentView === item.id
+                      ? 'border-blue-500 text-blue-600 bg-blue-50/80'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50/50'
                   }`}
                 >
-                  <div className="flex flex-col sm:flex-row items-center space-y-1 sm:space-y-0 sm:space-x-2 relative z-10">
+                  <div className="flex flex-col sm:flex-row items-center space-y-1 sm:space-y-0 sm:space-x-2">
                     <IconComponent className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                     <span className="truncate">
                       {item.label}
                       {item.count !== undefined && (
-                        <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                          isActive 
-                            ? 'bg-blue-200 text-blue-700' 
-                            : 'bg-gray-200 text-gray-600'
-                        }`}>
+                        <span className="ml-1 text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full">
                           {item.count}
                         </span>
                       )}
@@ -341,7 +266,7 @@ const App = () => {
                 {googleSheets.syncStatus === 'error' && <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />}
                 <span className="font-medium">
                   {googleSheets.syncStatus === 'syncing' && 'Syncing with Google Sheets...'}
-                  {googleSheets.syncStatus === 'success' && 'Successfully synced with Google Sheets!'}
+                  {googleSheets.syncStatus === 'success' && `Successfully synced! ${expenseTracker.masterData.categories.length} categories loaded.`}
                   {googleSheets.syncStatus === 'error' && 'Failed to sync with Google Sheets. Please try again.'}
                 </span>
               </div>
@@ -357,11 +282,30 @@ const App = () => {
           </div>
         )}
 
+        {/* Data Status Info */}
+        {dataLoaded && (
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-blue-50 border border-blue-200 rounded-xl">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-blue-800 font-medium">
+                📊 Data Status: {expenseTracker.transactions.length} transactions, {expenseTracker.masterData.categories.length} categories, {Object.keys(expenseTracker.balances).length} accounts
+              </span>
+              {!googleSheets.sheetsConfig.isConnected && (
+                <button
+                  onClick={handleConnect}
+                  className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors"
+                >
+                  Connect Sheets
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Main Content */}
         {navigationItems.find(item => item.id === currentView)?.component}
       </div>
 
-      {/* Enhanced Quick Add Button */}
+      {/* Quick Add Button - Mobile Optimized */}
       <div className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-50">
         <button
           onClick={() => setIsFormVisible(true)}
@@ -369,8 +313,8 @@ const App = () => {
         >
           <PlusCircle className="w-5 h-5 sm:w-6 sm:h-6" />
           
-          {/* Enhanced Mobile Label */}
-          <span className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-gray-900/90 backdrop-blur-sm text-white px-3 py-1 rounded-lg text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap sm:hidden">
+          {/* Mobile Label */}
+          <span className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-3 py-1 rounded-lg text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap sm:hidden">
             Add Transaction
           </span>
         </button>
@@ -391,6 +335,8 @@ const App = () => {
         onClose={() => setShowSyncModal(false)}
         googleSheets={googleSheets}
         expenseTracker={expenseTracker}
+        onConnect={handleConnect}
+        onManualSync={handleManualSync}
       />
     </div>
   );
