@@ -91,23 +91,31 @@ const App = () => {
 
   // Handle delete transaction with sheets integration
   const handleDeleteTransaction = async (transactionId) => {
+    console.log('🗑️ App: handleDeleteTransaction called with ID:', transactionId);
+    
     const transaction = expenseTracker.transactions.find(t => t.id === transactionId);
     
-    if (!window.confirm('Are you sure you want to delete this transaction?')) {
-      return;
-    }
-    
-    console.log('🗑️ App: Starting deletion process for transaction:', {
+    console.log('🔍 App: Found transaction:', {
       id: transactionId,
+      transaction: transaction,
       description: transaction?.description,
       sheetRow: transaction?.sheetRow,
       source: transaction?.source,
       synced: transaction?.synced
     });
     
+    if (!window.confirm('Are you sure you want to delete this transaction?')) {
+      console.log('🚫 App: User cancelled deletion');
+      return;
+    }
+    
+    console.log('✅ App: User confirmed deletion, proceeding...');
+    
     // Try to delete from sheets if it's a synced transaction with a sheet row
     if (transaction?.sheetRow && (transaction?.synced || transaction?.source === 'sheets')) {
       console.log('🔗 App: Attempting to delete from Google Sheets...');
+      console.log('🔗 App: Google Sheets hook available:', !!googleSheets.deleteTransactionFromSheets);
+      
       try {
         const sheetsDeleteResult = await googleSheets.deleteTransactionFromSheets(transaction);
         console.log('📊 App: Sheets deletion result:', sheetsDeleteResult);
@@ -122,12 +130,20 @@ const App = () => {
         // Continue with local deletion even if sheets deletion fails
       }
     } else {
-      console.log('ℹ️ App: Skipping sheets deletion - not a synced transaction or no sheet row');
+      console.log('ℹ️ App: Skipping sheets deletion because:', {
+        hasSheetRow: !!transaction?.sheetRow,
+        isSynced: !!transaction?.synced,
+        isFromSheets: transaction?.source === 'sheets',
+        reason: !transaction?.sheetRow ? 'No sheet row' : 
+                (!transaction?.synced && transaction?.source !== 'sheets') ? 'Not synced or from sheets' : 
+                'Unknown'
+      });
     }
     
     // Delete from local state
-    console.log('🏠 App: Deleting from local state...');
-    expenseTracker.deleteTransaction(transactionId);
+    console.log('🏠 App: Calling expenseTracker.deleteTransaction...');
+    const localDeleteResult = expenseTracker.deleteTransaction(transactionId);
+    console.log('🏠 App: Local deletion result:', localDeleteResult);
     console.log('✅ App: Deletion process completed');
   };
 
