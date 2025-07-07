@@ -21,7 +21,7 @@ const App = () => {
   const expenseTracker = useExpenseTracker();
   const googleSheets = useGoogleSheets();
 
-  // Function to update app state with data
+  // Function to update app state with data including categories
   const updateAppState = (data) => {
     if (!data) return;
     
@@ -35,6 +35,15 @@ const App = () => {
       expenseTracker.setMasterData(prev => ({ 
         ...prev, 
         accounts: data.accounts 
+      }));
+    }
+    
+    // 🔥 UPDATE: Handle categories from Google Sheets
+    if (data.categories && data.categories.length > 0) {
+      console.log('📋 Updating categories from Google Sheets:', data.categories.length);
+      expenseTracker.setMasterData(prev => ({ 
+        ...prev, 
+        categories: data.categories 
       }));
     }
     
@@ -76,16 +85,17 @@ const App = () => {
     handleConnectionChange();
   }, [googleSheets.sheetsConfig.isConnected, googleSheets.manualSync, dataLoaded]);
 
-  // 🔥 FIXED: Handle form submission with proper edit/add logic
+  // 🔥 ENHANCED: Handle form submission with all sheets operations
   const handleAddTransaction = async () => {
     console.log('📝 Handling transaction submission...');
     console.log('📝 Editing transaction:', expenseTracker.editingTransaction);
     
-    // Pass the sheets operations object with all CRUD methods
+    // Pass all the sheets operations including type detection
     const sheetsOperations = {
       addTransactionToSheets: googleSheets.addTransactionToSheets,
       updateTransactionInSheets: googleSheets.updateTransactionInSheets,
-      deleteTransactionFromSheets: googleSheets.deleteTransactionFromSheets
+      deleteTransactionFromSheets: googleSheets.deleteTransactionFromSheets,
+      getTransactionTypeFromCategory: googleSheets.getTransactionTypeFromCategory // 🔥 NEW
     };
     
     const success = await expenseTracker.addTransaction(sheetsOperations);
@@ -105,7 +115,7 @@ const App = () => {
     setIsFormVisible(true);
   };
 
-  // 🔥 FIXED: Handle delete transaction with sheets sync
+  // Handle delete transaction with sheets sync
   const handleDeleteTransaction = async (transactionId) => {
     console.log('🗑️ App: Handling delete for transaction:', transactionId);
     
@@ -158,7 +168,7 @@ const App = () => {
         <TransactionsView 
           expenseTracker={expenseTracker} 
           onEditTransaction={handleEditTransaction}
-          onDeleteTransaction={handleDeleteTransaction} // 🔥 Pass delete handler
+          onDeleteTransaction={handleDeleteTransaction}
         />
       )
     }
