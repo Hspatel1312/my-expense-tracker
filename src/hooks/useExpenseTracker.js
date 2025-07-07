@@ -210,7 +210,7 @@ export const useExpenseTracker = () => {
       type: getTransactionType(formData.category),
       synced: false,
       source: 'local',
-      sheetRow: editingTransaction?.sheetRow
+      sheetRow: editingTransaction?.sheetRow // Preserve the sheet row for edits
     };
 
     // Try to sync to Google Sheets if function provided
@@ -224,6 +224,7 @@ export const useExpenseTracker = () => {
 
     // Update local state
     if (editingTransaction) {
+      console.log('📝 Updating local transaction:', editingTransaction.id, 'with sheetRow:', editingTransaction.sheetRow);
       setTransactions(prev => prev.map(t => 
         t.id === editingTransaction.id ? newTransaction : t
       ));
@@ -236,6 +237,7 @@ export const useExpenseTracker = () => {
   };
 
   const editTransaction = (transaction) => {
+    console.log('✏️ Editing transaction:', transaction.id, 'sheetRow:', transaction.sheetRow);
     setEditingTransaction(transaction);
     setFormData({
       date: transaction.date,
@@ -247,8 +249,21 @@ export const useExpenseTracker = () => {
     });
   };
 
-  const deleteTransaction = (transactionId) => {
+  const deleteTransaction = async (transactionId, deleteFromSheets) => {
     if (!window.confirm('Are you sure you want to delete this transaction?')) return false;
+    
+    // Find the transaction to get sheet info
+    const transaction = transactions.find(t => t.id === transactionId);
+    
+    // Try to delete from sheets if function provided
+    if (deleteFromSheets && transaction) {
+      const sheetsDeleted = await deleteFromSheets(transaction);
+      if (!sheetsDeleted) {
+        console.warn('⚠️ Failed to delete from sheets, but continuing with local deletion');
+      }
+    }
+    
+    // Remove from local state
     setTransactions(prev => prev.filter(t => t.id !== transactionId));
     return true;
   };
