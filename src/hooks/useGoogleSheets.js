@@ -785,53 +785,98 @@ export const useGoogleSheets = () => {
   // Delete transaction from sheets
   const deleteTransactionFromSheets = useCallback(async (transaction) => {
     try {
+      console.log('🗑️ deleteTransactionFromSheets called with:', {
+        id: transaction.id,
+        sheetRow: transaction.sheetRow,
+        description: transaction.description,
+        isConnected: sheetsConfig.isConnected
+      });
+
       if (!sheetsConfig.isConnected) {
         console.log('⚠️ Not connected to sheets, skipping deletion');
         return true; // Allow local deletion even if not connected
       }
 
       if (!transaction.sheetRow || transaction.sheetRow <= 1) {
-        console.log('⚠️ No sheet row info, skipping sheets deletion');
+        console.log('⚠️ Invalid sheet row info:', transaction.sheetRow, '- skipping sheets deletion');
         return true; // Allow local deletion
       }
 
-      console.log('🗑️ Deleting transaction from row:', transaction.sheetRow);
+      console.log('🔍 Getting spreadsheet info to find sheet ID...');
 
       // First, get the sheet ID for the Transactions sheet
       const spreadsheetInfo = await window.gapi.client.sheets.spreadsheets.get({
         spreadsheetId: SHEETS_CONFIG.spreadsheetId
       });
       
+      console.log('📋 Available sheets:', spreadsheetInfo.result.sheets.map(s => ({
+        title: s.properties.title,
+        sheetId: s.properties.sheetId
+      })));
+      
       // Find the Transactions sheet ID
       const transactionsSheet = spreadsheetInfo.result.sheets.find(sheet => 
         sheet.properties.title === 'Transactions'
       );
       
+      if (!transactionsSheet) {
+        console.error('❌ Could not find "Transactions" sheet');
+        // Try with sheet ID 0 as fallback
+        console.log('🔄 Trying with sheet ID 0 as fallback...');
+      }
+      
       const sheetId = transactionsSheet ? transactionsSheet.properties.sheetId : 0;
-      console.log('📋 Using sheet ID:', sheetId, 'for Transactions sheet');
+      console.log('📋 Using sheet ID:', sheetId, 'for row deletion');
 
-      // Delete the row from Google Sheets
-      const deleteResponse = await window.gapi.client.sheets.spreadsheets.batchUpdate({
-        spreadsheetId: SHEETS_CONFIG.spreadsheetId,
-        resource: {
-          requests: [{
-            deleteDimension: {
-              range: {
-                sheetId: sheetId,
-                dimension: 'ROWS',
-                startIndex: transaction.sheetRow - 1, // 0-indexed
-                endIndex: transaction.sheetRow
+      console.log('🗑️ Attempting to delete row', transaction.sheetRow, 'from sheet ID', sheetId);
+
+      // Try Method 1: Delete the row using batchUpdate
+      try {
+        const deleteResponse = await window.gapi.client.sheets.spreadsheets.batchUpdate({
+          spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+          resource: {
+            requests: [{
+              deleteDimension: {
+                range: {
+                  sheetId: sheetId,
+                  dimension: 'ROWS',
+                  startIndex: transaction.sheetRow - 1, // 0-indexed
+                  endIndex: transaction.sheetRow
+                }
               }
-            }
-          }]
-        }
-      });
+            }]
+          }
+        });
 
-      console.log('✅ Transaction deleted from sheets successfully:', deleteResponse);
-      return true;
+        console.log('✅ Row deletion successful:', deleteResponse);
+        return true;
+
+      } catch (deleteError) {
+        console.error('❌ Row deletion failed, trying alternative method:', deleteError);
+        
+        // Method 2: Clear the row content instead of deleting
+        console.log('🔄 Trying to clear row content instead...');
+        try {
+          const clearResponse = await window.gapi.client.sheets.spreadsheets.values.clear({
+            spreadsheetId: SHEETS_CONFIG.spreadsheetId,
+            range: `Transactions!A${transaction.sheetRow}:I${transaction.sheetRow}`
+          });
+          
+          console.log('✅ Row content cleared successfully:', clearResponse);
+          return true;
+        } catch (clearError) {
+          console.error('❌ Both deletion methods failed:', clearError);
+          return false;
+        }
+      }
+
     } catch (error) {
       console.error('❌ Failed to delete transaction from sheets:', error);
-      console.error('Error details:', error.result || error.message);
+      console.error('Error details:', {
+        message: error.message,
+        result: error.result,
+        status: error.status
+      });
       return false;
     }
   }, [sheetsConfig.isConnected]);
