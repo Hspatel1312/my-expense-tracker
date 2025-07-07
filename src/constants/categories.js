@@ -17,7 +17,7 @@ export const categoryColors = {
   'Income': '#66BB6A'
 };
 
-// 🔥 UPDATED: Fallback categories (will be replaced by Google Sheets data)
+// Fallback categories
 export const masterCategories = [
   { main: 'Food', sub: 'Food', combined: 'Food > Food' },
   { main: 'Social Life', sub: 'Social Life', combined: 'Social Life > Social Life' },
@@ -48,35 +48,59 @@ export const masterCategories = [
   { main: 'Income', sub: 'Others', combined: 'Income > Others' }
 ];
 
-// 🔥 NEW: Function to process categories from Google Sheets
+// 🔥 ENHANCED: Function to process categories from Google Sheets with detailed debugging
 export const processCategoriesFromSheets = (sheetsData) => {
+  console.log('📋 🔥 PROCESSING CATEGORIES FROM SHEETS:');
+  console.log('📋 Raw sheets data:', sheetsData);
+  console.log('📋 Data type:', typeof sheetsData);
+  console.log('📋 Is array:', Array.isArray(sheetsData));
+  console.log('📋 Data length:', sheetsData ? sheetsData.length : 'null/undefined');
+
   if (!sheetsData || !Array.isArray(sheetsData)) {
-    console.log('📋 No valid sheets data, using fallback categories');
+    console.log('📋 ❌ No valid sheets data, using fallback categories');
     return masterCategories;
   }
 
   const categories = [];
   
   sheetsData.forEach((row, index) => {
-    if (row && row.length >= 3) {
+    console.log(`📋 🔍 Processing row ${index + 1}:`, row);
+    
+    if (row && Array.isArray(row)) {
       const main = row[0] ? row[0].toString().trim() : '';
       const sub = row[1] ? row[1].toString().trim() : '';
       const combined = row[2] ? row[2].toString().trim() : '';
       
-      if (main && sub && combined) {
-        categories.push({
+      console.log(`📋 Row ${index + 1} parsed:`, { main, sub, combined });
+      
+      // 🔥 RELAXED: Accept rows that have at least main and combined
+      if (main && combined) {
+        const categoryItem = {
           main: main,
-          sub: sub,
+          sub: sub || main, // Use main as sub if sub is empty
           combined: combined
-        });
+        };
         
-        console.log(`📋 Processed category ${index + 1}:`, { main, sub, combined });
+        categories.push(categoryItem);
+        console.log(`📋 ✅ Added category ${categories.length}:`, categoryItem);
+      } else {
+        console.log(`📋 ⚠️ Skipping row ${index + 1} - missing main or combined:`, { main, sub, combined });
       }
+    } else {
+      console.log(`📋 ⚠️ Skipping row ${index + 1} - invalid format:`, row);
     }
   });
   
-  console.log('📋 Total categories processed from sheets:', categories.length);
+  console.log('📋 🔥 FINAL PROCESSING RESULTS:');
+  console.log('📋 Total categories processed:', categories.length);
+  console.log('📋 All processed categories:', categories);
   
   // If no categories were processed, return fallback
-  return categories.length > 0 ? categories : masterCategories;
+  if (categories.length === 0) {
+    console.log('📋 ❌ No categories processed, using fallback');
+    return masterCategories;
+  }
+  
+  console.log('📋 ✅ Returning processed categories:', categories.length);
+  return categories;
 };
