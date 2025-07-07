@@ -1,9 +1,8 @@
 import React from 'react';
 import { Search, Filter, Edit, Trash2, Calendar, DollarSign, Tag, CreditCard, X, ChevronDown } from 'lucide-react';
-import { categoryColors } from '../constants/categories';
 import { parseCategory, months, getYears } from '../utils/helpers';
 
-const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransaction }) => {
+const TransactionsView = ({ expenseTracker, onEditTransaction }) => {
   const {
     filteredTransactions,
     filters,
@@ -11,21 +10,13 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransacti
     showFilters,
     setShowFilters,
     clearFilters,
-    masterData
+    deleteTransaction,
+    masterData,
+    uniqueMainCategories,
+    getCategoryColor
   } = expenseTracker;
 
-  const uniqueCategories = [...new Set(filteredTransactions.map(t => parseCategory(t.category).main))];
   const uniqueAccounts = [...new Set(filteredTransactions.map(t => t.account))];
-
-  // 🔥 FIXED: Use the passed delete handler
-  const handleDeleteClick = (transactionId) => {
-    console.log('🗑️ TransactionsView: Delete clicked for:', transactionId);
-    if (onDeleteTransaction) {
-      onDeleteTransaction(transactionId);
-    } else {
-      console.error('❌ No delete handler provided');
-    }
-  };
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -79,7 +70,7 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransacti
                   className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 >
                   <option value="">All Categories</option>
-                  {uniqueCategories.map(cat => (
+                  {uniqueMainCategories.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
@@ -151,6 +142,8 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransacti
           ) : (
             filteredTransactions.map((transaction) => {
               const categoryData = parseCategory(transaction.category);
+              const categoryColor = getCategoryColor(categoryData.main);
+              
               return (
                 <div key={transaction.id} className="p-4 sm:p-6 hover:bg-gray-50/80 transition-colors duration-200">
                   {/* Mobile Layout */}
@@ -159,7 +152,7 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransacti
                       <div className="flex items-start space-x-3 flex-1 min-w-0">
                         <div 
                           className="w-3 h-3 rounded-full flex-shrink-0 mt-1"
-                          style={{ backgroundColor: categoryColors[categoryData.main] || '#9CA3AF' }}
+                          style={{ backgroundColor: categoryColor }}
                         ></div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-gray-900 truncate">{transaction.description}</p>
@@ -202,7 +195,7 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransacti
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDeleteClick(transaction.id)}
+                        onClick={() => deleteTransaction(transaction.id)}
                         className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -215,7 +208,7 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransacti
                     <div className="flex items-center space-x-4 flex-1">
                       <div 
                         className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: categoryColors[categoryData.main] || '#9CA3AF' }}
+                        style={{ backgroundColor: categoryColor }}
                       ></div>
                       
                       <div className="flex-1 min-w-0">
@@ -263,7 +256,7 @@ const TransactionsView = ({ expenseTracker, onEditTransaction, onDeleteTransacti
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDeleteClick(transaction.id)}
+                          onClick={() => deleteTransaction(transaction.id)}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                         >
                           <Trash2 className="w-4 h-4" />
